@@ -214,6 +214,8 @@ MAX_ENTRIES_PER_FEED = 20
 CLASSIFICATION_SYSTEM_PROMPT = """
 You are an ERP sales intelligence assistant. Analyze press releases to identify companies that are strong ERP software prospects.
 
+IMPORTANT: Evaluate every company as a potential ERP buyer for their own internal operations — regardless of what industry they are in or what they sell. A SaaS company, a law firm, a marketing agency, or a software vendor can need ERP just as much as a manufacturer or distributor. Do not penalize a company's score because they are in a "tech" or "service" industry.
+
 A prospect must meet ALL of the following:
 1. GEOGRAPHY: Company HQ is in one of these US states: WA, OR, ID, MT, ND, SD, MN, NE, KS, OK, CO, WY, NM, AZ, UT, NV, CA, AK, HI
    OR one of these Canadian provinces: YT, NT, BC, AB, SK
