@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 from urllib.parse import quote
 
 import requests
@@ -11,6 +12,28 @@ from config import TAM_US_STATES, TAM_CA_PROVINCES
 logger = logging.getLogger(__name__)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ERPSignalBot/1.0)"}
+
+# ---------------------------------------------------------------------------
+# Company cache — persists across runs so each company is only looked up once
+# ---------------------------------------------------------------------------
+
+_COMPANY_CACHE_FILE = Path(__file__).parent / "company_cache.json"
+
+
+def _load_cache() -> dict:
+    if _COMPANY_CACHE_FILE.exists():
+        try:
+            return json.loads(_COMPANY_CACHE_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_cache(cache: dict) -> None:
+    _COMPANY_CACHE_FILE.write_text(json.dumps(cache, indent=2))
+
+
+_company_cache: dict = _load_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +223,21 @@ def _find_linkedin_url(company_name: str) -> str:
 # GPT synthesis
 # ---------------------------------------------------------------------------
 
-_SYNTHESIS_PROMPT = """You are a company research assistant. Using the search data below, extract structured information about "{company_name}".
+_SYNTHESIS_PROMPT = """You are a company research analyst. Using the search data below, extract structured firmographic information about "{company_name}".
+
+RULES:
+- employee_count: ALWAYS provide a number or range. NEVER null. If not stated, estimate from \
+  any available signals — industry, revenue, company stage, language like "regional", "startup", \
+  "family-owned". Examples: "12", "25-50", "~40", "est. 10-30".
+- estimated_revenue: ALWAYS provide an estimate. NEVER null. Reason from headcount, funding \
+  amounts, industry norms, or company stage. Use these as guides: \
+  1-10 employees ≈ under $1M, 10-50 ≈ $1M-$5M, 50-100 ≈ $5M-$15M, 100+ ≈ over $15M. \
+  Examples: "$3M", "$5M-$10M", "est. $2M".
+- hq_state_or_province: 2-letter US state (WA, OR, CA …) or Canadian province (BC, AB …), \
+  or null only if genuinely undetectable.
+- hq_country: "US", "Canada", or "other". null only if genuinely undetectable.
+- current_software: any ERP, accounting, or ops software explicitly mentioned (QuickBooks, \
+  SAP, NetSuite, Sage, etc.), or null.
 
 --- DuckDuckGo Instant Answer ---
 {ddg_abstract}
@@ -225,20 +262,20 @@ _SYNTHESIS_PROMPT = """You are a company research assistant. Using the search da
 --- OpenCorporates Registry ---
 {opencorporates}
 
-Return a JSON object:
+Reply ONLY with this exact JSON (no markdown, no explanation):
 {{
   "hq_city": "city or null",
-  "hq_state_or_province": "2-letter US state or Canadian province code, or null",
+  "hq_state_or_province": "2-letter code or null",
   "hq_country": "US or Canada or other or null",
-  "employee_count": "REQUIRED — always provide a number or range. Use exact figure if found. If not found, estimate based on revenue, industry, and company description. Examples: '12', '25-50', '~40', 'est. 10-30'. Never return null.",
-  "estimated_revenue": "e.g. '$3M' or '$5M-$10M' or null",
+  "employee_count": "always a number or range e.g. '25', '50-100', '~40'",
+  "employee_count_est": <integer — single best-estimate headcount, use midpoint of any range>,
+  "estimated_revenue": "always an estimate e.g. '$3M', '$5M-$10M'",
+  "revenue_millions_est": <float — single best-estimate revenue in millions USD, e.g. 7.5 for "$5M-$10M">,
   "website": "official website URL or null",
-  "industry": "one line description or null",
-  "current_software": "any known ERP, accounting, or ops software (QuickBooks, SAP, etc.) or null",
+  "industry": "one-line description or null",
+  "current_software": "known ERP/accounting software or null",
   "notes": "anything relevant about size or growth stage"
-}}
-
-Return JSON only. If data is missing or unreliable, use null — except employee_count which must always have a value."""
+}}"""
 
 
 def _synthesize_with_gpt(
@@ -283,6 +320,77 @@ def _synthesize_with_gpt(
 
 
 # ---------------------------------------------------------------------------
+# Firmographics scoring
+# ---------------------------------------------------------------------------
+
+_ROUTE_THRESHOLD = 7.3
+_MAX_EMPLOYEES   = 150
+_MAX_REVENUE_M   = 80.0
+
+
+def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
+    """
+    Score 0.0–10.0 based on how well the company fits the target profile.
+    Returns (score, exclusion_reason). exclusion_reason is set (and score=0)
+    when the company exceeds hard limits — skip it entirely regardless of article score.
+
+    Scoring breakdown (max 10 pts):
+      Employee component (0–5 pts):
+        10–50   → 5.0   sweet spot
+        51–100  → 4.5
+        101–150 → 3.5
+        <10     → 3.0   possibly too small
+        unknown → 3.5   take a risk
+        >150    → EXCLUDED
+
+      Revenue component (0–5 pts):
+        $1M–$15M  → 5.0  sweet spot
+        $15M–$30M → 4.0
+        $30M–$50M → 3.0
+        $50M–$80M → 2.0
+        <$1M      → 2.5  possibly too small
+        unknown   → 3.5  take a risk
+        >$80M     → EXCLUDED
+    """
+    emp = enrichment.get("employee_count_est")
+    rev = enrichment.get("revenue_millions_est")
+
+    # Hard exclusions
+    if emp is not None and emp > _MAX_EMPLOYEES:
+        return 0.0, f"employee count too high (~{emp})"
+    if rev is not None and rev > _MAX_REVENUE_M:
+        return 0.0, f"revenue too high (~${rev:.0f}M)"
+
+    # Employee component
+    if emp is None:
+        emp_score = 3.5
+    elif emp <= 9:
+        emp_score = 3.0
+    elif emp <= 50:
+        emp_score = 5.0
+    elif emp <= 100:
+        emp_score = 4.5
+    else:  # 101–150
+        emp_score = 3.5
+
+    # Revenue component
+    if rev is None:
+        rev_score = 3.5
+    elif rev < 1:
+        rev_score = 2.5
+    elif rev <= 15:
+        rev_score = 5.0
+    elif rev <= 30:
+        rev_score = 4.0
+    elif rev <= 50:
+        rev_score = 3.0
+    else:  # 50–80
+        rev_score = 2.0
+
+    return emp_score + rev_score, None
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -290,9 +398,15 @@ def enrich_company(company_name: str) -> dict | None:
     """
     Look up a company using free sources (DuckDuckGo + Wikipedia),
     synthesize with GPT-4o-mini, and find their LinkedIn URL.
+    Results are cached to company_cache.json so each company is only looked up once.
     """
     if not company_name:
         return None
+
+    cache_key = company_name.strip().lower()
+    if cache_key in _company_cache:
+        logger.info(f"Cache hit for '{company_name}'")
+        return _company_cache[cache_key]
 
     ddg = _duckduckgo_instant(company_name)
     website_url = ddg.get("website", "") or _find_website(company_name)
@@ -313,9 +427,18 @@ def enrich_company(company_name: str) -> dict | None:
     if result is None:
         return None
 
+    # Code-level fallbacks — GPT should never return these but guard anyway
+    if not result.get("employee_count"):
+        result["employee_count"] = "est. 10-50"
+    if not result.get("estimated_revenue"):
+        result["estimated_revenue"] = "est. $1M-$5M"
+
     result["linkedin_url"] = linkedin or None
     if not result.get("website") and website_url:
         result["website"] = website_url
+
+    _company_cache[cache_key] = result
+    _save_cache(_company_cache)
 
     logger.info(
         f"Enriched '{company_name}': "
@@ -329,24 +452,30 @@ def enrich_company(company_name: str) -> dict | None:
 
 def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     """
-    Merge enrichment data into classification and re-evaluate routing.
+    Merge enrichment data into classification, score both article fit and
+    firmographics, and make a final routing decision.
+
+    Routing requires ALL of:
+      - in_tam_geography is True
+      - at least one ERP signal
+      - not hard-excluded (employees <= 150 AND revenue <= $80M)
+      - average of article_score + firmographics_score >= 7.3
     """
     updated = classification.copy()
     updated["enrichment"] = enrichment
 
-    hq_state = enrichment.get("hq_state_or_province")
+    # --- Location merge (only fill gaps, never override Stage 1) -----------
+    hq_state   = enrichment.get("hq_state_or_province")
     hq_country = enrichment.get("hq_country")
 
-    # Only fill in location fields that Stage 1 left blank — never override
     original_location = classification.get("location") or {}
-    original_state = original_location.get("state_or_province")
-    original_country = original_location.get("country")
+    original_state    = original_location.get("state_or_province")
+    original_country  = original_location.get("country")
 
     if not original_state or not original_country:
-        # Stage 1 was missing location data — use enrichment to fill in
-        merged_state = original_state or hq_state
+        merged_state   = original_state or hq_state
         merged_country = original_country or hq_country
-        merged_city = original_location.get("city") or enrichment.get("hq_city")
+        merged_city    = original_location.get("city") or enrichment.get("hq_city")
 
         if merged_state or merged_country:
             updated["location"] = {
@@ -358,20 +487,41 @@ def apply_enrichment(classification: dict, enrichment: dict) -> dict:
                 in_us_tam = merged_country == "US" and merged_state in TAM_US_STATES
                 in_ca_tam = merged_country == "Canada" and merged_state in TAM_CA_PROVINCES
                 updated["in_tam_geography"] = in_us_tam or in_ca_tam
-    # If Stage 1 already had location — leave it alone
 
     rev = enrichment.get("estimated_revenue")
     if rev and updated.get("revenue_estimate") in (None, "unknown", ""):
         updated["revenue_estimate"] = rev
 
-    geo_ok = updated.get("in_tam_geography")
-    rev_ok = updated.get("revenue_in_range")
+    # --- Hard exclusion + firmographics score ------------------------------
+    firmographics_score, exclusion_reason = _firmographics_score(enrichment)
+
+    if exclusion_reason:
+        updated["should_route"]       = False
+        updated["exclusion_reason"]   = exclusion_reason
+        updated["firmographics_score"] = 0.0
+        logger.info(f"Hard excluded '{classification.get('company_name')}': {exclusion_reason}")
+        return updated
+
+    # --- Dual score average -----------------------------------------------
+    article_score = float(classification.get("article_score") or 5.0)
+    avg_score     = (article_score + firmographics_score) / 2
+
+    updated["article_score"]       = round(article_score, 1)
+    updated["firmographics_score"] = round(firmographics_score, 1)
+    updated["avg_score"]           = round(avg_score, 1)
+
+    geo_ok  = updated.get("in_tam_geography")
     signals = updated.get("erp_signals") or []
 
     updated["should_route"] = bool(
         geo_ok is True
-        and rev_ok is not False
         and len(signals) > 0
+        and avg_score >= _ROUTE_THRESHOLD
     )
 
+    logger.info(
+        f"Scored '{classification.get('company_name')}': "
+        f"article={article_score:.1f} | firmographics={firmographics_score:.1f} "
+        f"| avg={avg_score:.1f} | route={'YES' if updated['should_route'] else 'NO'}"
+    )
     return updated

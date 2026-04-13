@@ -237,6 +237,15 @@ A prospect must meet ALL of the following:
 
 should_route must be true only when: in_tam_geography=true AND revenue_in_range is true or null AND erp_signals is non-empty.
 
+For signal_summary: anchor on one specific detail from the article (quoted), then write your own original analysis of what this means operationally. Do not rephrase the article — reason about what actually gets harder for a company this size in this industry. Name the exact ERP pain point. A craft beverage distributor opening a second state has different problems than a SaaS company doing the same. End with a concrete sales talking point.
+
+For article_score (1.0–10.0), score how strongly this article signals an imminent ERP evaluation need. Score on these dimensions:
+- Signal strength: how directly does the trigger event create operational complexity requiring ERP?
+- Specificity: does the article give concrete operational detail, or is it vague?
+- Signal count: multiple signals score higher than one
+- Size confidence: how clearly does the article confirm the company is in the target revenue/headcount range?
+Score honestly based on the article alone. Do not adjust the score to influence routing — that decision is made separately.
+
 Respond with valid JSON only. No markdown, no explanation."""
 
 CLASSIFICATION_USER_PROMPT = """Analyze this press release and return a JSON object.
@@ -257,9 +266,9 @@ Return exactly this JSON structure:
   "revenue_estimate": "e.g. '$5M' or 'unknown' or '$50M+ (too large)'",
   "revenue_in_range": true/false/null,
   "erp_signals": ["use exact signal names from the defined list, e.g. 'Leadership Change', 'New Funding Round'"],
-  "signal_summary": "3-5 sentence summary written for an ERP salesperson. Cover: what the company does, what the trigger event is, why this creates an ERP need, and what talking points are relevant.",
+  "signal_summary": "3-5 sentences written for an ERP salesperson. REQUIREMENTS: (1) Anchor on a specific detail from the article — quote a word or phrase in double-quotes to show you read it, e.g. they announced a \"second distribution hub in Nevada\". (2) The rest of the summary must be your OWN analysis — do NOT just rephrase what the article says. Reason about what this event means operationally for a company of this size in this industry. What specifically breaks or gets harder? (3) Name the exact ERP pain: multi-state sales tax nexus, inventory split across locations, multi-entity consolidation, tracking a new product line in a separate margin bucket, payroll across two jurisdictions, etc. Be specific to their industry — a craft beverage distributor expanding states has different pain than a SaaS company doing the same. (4) End with one concrete talking point the sales rep can open with, tied to what was announced.",
   "sub_industry": "specific sub-industry, not just the top-level. Examples: medical device manufacturing, craft beverage distribution, specialty chemical wholesale, commercial HVAC contractor, agricultural equipment dealer",
   "should_route": true/false,
-  "confidence": 0.0-1.0,
+  "article_score": 1.0-10.0 (score the article's ERP evaluation relevance on the dimensions above),
   "routing_reason": "brief explanation of the routing decision"
 }}"""

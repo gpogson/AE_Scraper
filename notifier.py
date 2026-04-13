@@ -30,8 +30,9 @@ def _embed_color(signals: list[str]) -> int:
     return _DEFAULT_COLOR
 
 
-def _confidence_bar(score: float) -> str:
-    filled = round(score * 10)
+def _score_bar(score: float) -> str:
+    """score is 0–10; renders a 10-block bar."""
+    filled = round(score)
     return "█" * filled + "░" * (10 - filled)
 
 
@@ -53,13 +54,18 @@ def send_discord_notification(article: dict, classification: dict):
     company = classification.get("company_name") or "Unknown Company"
     location = classification.get("location") or {}
     signals = classification.get("erp_signals") or []
-    confidence = float(classification.get("confidence") or 0)
-    revenue = classification.get("revenue_estimate") or "Unknown"
-    summary = classification.get("signal_summary") or ""
-    sub_industry = classification.get("sub_industry") or ""
+    article_score      = float(classification.get("article_score") or 0)
+    firmographics_score = float(classification.get("firmographics_score") or 0)
+    avg_score          = float(classification.get("avg_score") or 0)
+    revenue            = classification.get("revenue_estimate") or "Unknown"
+    summary            = classification.get("signal_summary") or ""
+    sub_industry       = classification.get("sub_industry") or ""
 
-    confidence_pct = int(confidence * 100)
-    bar = _confidence_bar(confidence)
+    score_line = (
+        f"Article `{article_score:.1f}` {_score_bar(article_score)}  "
+        f"Firmographics `{firmographics_score:.1f}` {_score_bar(firmographics_score)}  "
+        f"**Avg `{avg_score:.1f}/10`**"
+    )
 
     # Enrichment data
     enrichment = classification.get("enrichment") or {}
@@ -78,10 +84,14 @@ def send_discord_notification(article: dict, classification: dict):
     industry_value = sub_industry or enrichment.get("industry") or "\u2014"
 
     fields = [
-        # Article link just below title
         {
             "name": "\U0001f4f0 Article",
             "value": article_link,
+            "inline": False,
+        },
+        {
+            "name": "\U0001f4ca Score",
+            "value": score_line,
             "inline": False,
         },
         # Row: location, revenue, employees, industry

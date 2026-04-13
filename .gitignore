@@ -1,5 +1,6 @@
 .env
 seen_articles.db
+company_cache.json
 agent.log
 __pycache__/
 *.pyc

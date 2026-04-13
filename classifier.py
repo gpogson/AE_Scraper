@@ -45,17 +45,16 @@ def classify_article(article: dict) -> dict | None:
         result = json.loads(raw)
 
         should = result.get("should_route", False)
-        confidence = result.get("confidence", 0)
+        article_score = result.get("article_score", 0)
         company = result.get("company_name", "?")
 
         if should:
             reason = result.get("routing_reason", "")
             logger.info(
                 f"Classified '{article['title'][:55]}...' "
-                f"→ ROUTE ✓ | {company} | confidence={confidence:.0%} | {reason}"
+                f"→ ROUTE ✓ | {company} | article_score={article_score:.1f}/10 | {reason}"
             )
         else:
-            # Build a short skip reason from what failed
             geo = result.get("in_tam_geography")
             rev = result.get("revenue_in_range")
             signals = result.get("erp_signals", [])
@@ -71,7 +70,7 @@ def classify_article(article: dict) -> dict | None:
             skip_str = " | ".join(skip_reasons) if skip_reasons else result.get("routing_reason", "no reason given")
             logger.info(
                 f"Classified '{article['title'][:55]}...' "
-                f"→ skip | {company} | {skip_str}"
+                f"→ skip | {company} | score={article_score:.1f}/10 | {skip_str}"
             )
         return result
 
