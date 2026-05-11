@@ -1,17 +1,13 @@
 import json
 import logging
 import os
-import re
 from pathlib import Path
-from urllib.parse import quote
 
 import requests
 
 from config import TAM_US_STATES, TAM_CA_PROVINCES
 
 logger = logging.getLogger(__name__)
-
-_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ERPSignalBot/1.0)"}
 
 # ---------------------------------------------------------------------------
 # Company cache — persists across runs so each company is only looked up once
@@ -37,285 +33,117 @@ _company_cache: dict = _load_cache()
 
 
 # ---------------------------------------------------------------------------
-# Free data sources
+# Brave Search — ZoomInfo snippet
 # ---------------------------------------------------------------------------
 
-def _duckduckgo_instant(company_name: str) -> dict:
-    """DuckDuckGo Instant Answer API — free, no key needed."""
-    try:
-        resp = requests.get(
-            "https://api.duckduckgo.com/",
-            params={
-                "q": company_name,
-                "format": "json",
-                "no_redirect": "1",
-                "no_html": "1",
-                "skip_disambig": "1",
-            },
-            headers=_HEADERS,
-            timeout=10,
-        )
-        data = resp.json()
-        return {
-            "abstract": data.get("Abstract", ""),
-            "website": data.get("AbstractURL", ""),
-            "type": data.get("Type", ""),
-            "infobox": str(data.get("Infobox", "")),
-        }
-    except Exception:
-        logger.debug(f"DuckDuckGo lookup failed for: {company_name}")
-        return {}
-
-
-def _wikipedia_summary(company_name: str) -> str:
-    """Wikipedia REST API summary — free, often has HQ, employees, revenue."""
-    try:
-        slug = company_name.replace(" ", "_")
-        resp = requests.get(
-            f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(slug)}",
-            headers=_HEADERS,
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            return data.get("extract", "")
-    except Exception:
-        pass
-    return ""
-
-
-def _fetch_website_text(url: str) -> str:
-    """Fetch a company's website and return plain text (first 2000 chars)."""
-    if not url:
+def _zoominfo_data(company_name: str) -> str:
+    """
+    Search Brave for the company's ZoomInfo page.
+    Returns a combined text block from the description + FAQ Q&A cards,
+    which Brave extracts directly from ZoomInfo without needing to load the page.
+    """
+    api_key = os.environ.get("BRAVE_API_KEY", "")
+    if not api_key:
+        logger.warning("BRAVE_API_KEY not set — skipping enrichment")
         return ""
-    try:
-        resp = requests.get(url, headers=_HEADERS, timeout=10)
-        if resp.status_code == 200:
-            text = re.sub(r"<[^>]+>", " ", resp.text)
-            text = re.sub(r"\s{2,}", " ", text)
-            return text[:2000]
-    except Exception:
-        pass
-    return ""
 
-
-def _duckduckgo_search(company_name: str) -> str:
-    """DuckDuckGo HTML search for company size/revenue snippets."""
     try:
         resp = requests.get(
-            "https://html.duckduckgo.com/html/",
-            params={"q": f'"{company_name}" employees OR revenue OR headquarters OR "founded in"'},
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"},
-            timeout=10,
-        )
-        # Extract result snippets
-        snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', resp.text, re.DOTALL)
-        clean = [re.sub(r"<[^>]+>", " ", s).strip() for s in snippets[:5]]
-        return " | ".join(clean)
-    except Exception:
-        pass
-    return ""
-
-
-def _find_website(company_name: str) -> str:
-    """Google 'I'm Feeling Lucky' — returns the top result URL for the company name."""
-    from urllib.parse import urlparse, parse_qs
-    try:
-        resp = requests.get(
-            "https://www.google.com/search",
-            params={"q": company_name, "btnI": "1"},
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
-            timeout=10,
-            allow_redirects=True,
-        )
-        # Google lands on /url?q=<target> after the redirect
-        qs = parse_qs(urlparse(resp.url).query)
-        url = qs.get("q", [""])[0]
-        if not url:
-            url = resp.url
-        skip = ("google.", "bing.", "yahoo.", "duckduckgo.", "facebook.", "twitter.",
-                "linkedin.", "youtube.", "wikipedia.", "globenewswire.", "prnewswire.",
-                "businesswire.", "sec.gov", "bloomberg.", "reuters.", "crunchbase.")
-        if url and not any(s in url for s in skip):
-            return url.split("?")[0].rstrip("/")
-    except Exception:
-        pass
-    return ""
-
-
-def _fetch_about_page(website_url: str) -> str:
-    """Try fetching /about or /about-us page for headcount and office info."""
-    if not website_url:
-        return ""
-    base = website_url.rstrip("/")
-    for path in ["/about", "/about-us", "/company", "/team"]:
-        try:
-            resp = requests.get(base + path, headers=_HEADERS, timeout=8)
-            if resp.status_code == 200:
-                text = re.sub(r"<[^>]+>", " ", resp.text)
-                text = re.sub(r"\s{2,}", " ", text)
-                return text[:1500]
-        except Exception:
-            continue
-    return ""
-
-
-def _google_news_company(company_name: str) -> str:
-    """Google News RSS search for recent company news — reveals growth trajectory."""
-    try:
-        from urllib.parse import quote as _quote
-        url = f"https://news.google.com/rss/search?q={_quote(company_name)}&hl=en-US&gl=US&ceid=US:en"
-        resp = requests.get(url, headers=_HEADERS, timeout=10)
-        import feedparser
-        feed = feedparser.parse(resp.content)
-        titles = [e.get("title", "") for e in feed.entries[:5]]
-        return " | ".join(titles)
-    except Exception:
-        pass
-    return ""
-
-
-def _opencorporates(company_name: str) -> str:
-    """OpenCorporates free API — returns incorporation state and company status."""
-    try:
-        resp = requests.get(
-            "https://api.opencorporates.com/v0.4/companies/search",
-            params={"q": company_name, "jurisdiction_code": "us", "per_page": 3},
-            headers=_HEADERS,
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            companies = resp.json().get("results", {}).get("companies", [])
-            if companies:
-                c = companies[0]["company"]
-                return (
-                    f"Incorporated: {c.get('jurisdiction_code', '?').upper()} | "
-                    f"Status: {c.get('current_status', '?')} | "
-                    f"Registered: {c.get('incorporation_date', '?')}"
-                )
-    except Exception:
-        pass
-    return ""
-
-
-def _find_linkedin_url(company_name: str) -> str:
-    """Search DuckDuckGo HTML for a LinkedIn company URL."""
-    try:
-        resp = requests.get(
-            "https://html.duckduckgo.com/html/",
-            params={"q": f"{company_name} site:linkedin.com/company"},
+            "https://api.search.brave.com/res/v1/web/search",
+            params={"q": f'"{company_name}" site:zoominfo.com', "count": 3},
             headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": api_key,
             },
             timeout=10,
         )
-        urls = re.findall(r'https://[a-z]+\.linkedin\.com/company/[^\s"&]+', resp.text)
-        if urls:
-            # Clean and return first match
-            url = urls[0].split("?")[0].rstrip("/")
-            return url
+        if resp.status_code != 200:
+            return ""
+
+        data = resp.json()
+        parts = []
+
+        # Web result description (employee count, HQ, industry summary)
+        for r in data.get("web", {}).get("results", []):
+            if "zoominfo.com" in r.get("url", ""):
+                desc = r.get("description", "")
+                if desc:
+                    parts.append(desc)
+                break
+
+        # FAQ cards — Brave extracts these as structured Q&A from ZoomInfo
+        # Keep company-level facts only; skip individual employee entries
+        keep = {"revenue", "employee", "headquarter", "address", "location",
+                "industry", "founded", "size", "website"}
+        skip = {"email", "phone", "work in", "work for", "contact", "role in",
+                "latest job", "direct phone", "colleague", "based", "education",
+                "stock symbol", "naics", "sic code", "competition", "social media",
+                "acquired", "technology"}
+        import re
+        strip_tags = re.compile(r"<[^>]+>")
+        for faq in data.get("faq", {}).get("results", []):
+            q = faq.get("question", "").lower()
+            if any(s in q for s in skip):
+                continue
+            if any(k in q for k in keep):
+                a = strip_tags.sub("", faq.get("answer", "")).strip()
+                if a:
+                    parts.append(f"{faq['question']}: {a}")
+
+        return "\n".join(parts)
+
     except Exception:
-        pass
+        logger.debug(f"Brave ZoomInfo search failed for: {company_name}")
     return ""
 
 
 # ---------------------------------------------------------------------------
-# GPT synthesis
+# GPT extraction
 # ---------------------------------------------------------------------------
 
-_SYNTHESIS_PROMPT = """You are a company research analyst. Using the search data below, extract structured firmographic information about "{company_name}".
+_EXTRACT_PROMPT = """Extract firmographic data from this ZoomInfo snippet about "{company_name}".
 
-RULES:
-- employee_count: ALWAYS provide a number or range. NEVER null. If not stated, estimate from \
-  any available signals — industry, revenue, company stage, language like "regional", "startup", \
-  "family-owned". Examples: "12", "25-50", "~40", "est. 10-30".
-- estimated_revenue: ALWAYS provide an estimate. NEVER null. Reason from headcount, funding \
-  amounts, industry norms, or company stage. Use these as guides: \
-  1-10 employees ≈ under $1M, 10-50 ≈ $1M-$5M, 50-100 ≈ $5M-$15M, 100+ ≈ over $15M. \
-  Examples: "$3M", "$5M-$10M", "est. $2M".
-- hq_state_or_province: 2-letter US state (WA, OR, CA …) or Canadian province (BC, AB …), \
-  or null only if genuinely undetectable.
-- hq_country: "US", "Canada", or "other". null only if genuinely undetectable.
-- current_software: any ERP, accounting, or ops software explicitly mentioned (QuickBooks, \
-  SAP, NetSuite, Sage, etc.), or null.
+Snippet: {snippet}
 
---- DuckDuckGo Instant Answer ---
-{ddg_abstract}
-{ddg_website}
-{ddg_infobox}
+Rules:
+- employee_count: exact string from snippet e.g. "42", "50-200". If missing, estimate from revenue or industry.
+- employee_count_est: integer best-estimate (midpoint if range)
+- estimated_revenue: exact string from snippet e.g. "$8M". If missing, estimate from headcount.
+- revenue_millions_est: float best-estimate in millions e.g. 8.0
+- hq_city, hq_state_or_province (2-letter code), hq_country ("US", "Canada", or "other")
+- industry: one-line description
 
---- DuckDuckGo Search Snippets ---
-{ddg_search}
-
---- Wikipedia ---
-{wikipedia}
-
---- Company Website Homepage ---
-{website_text}
-
---- Company About/Team Page ---
-{about_text}
-
---- Recent News Headlines ---
-{news_headlines}
-
---- OpenCorporates Registry ---
-{opencorporates}
-
-Reply ONLY with this exact JSON (no markdown, no explanation):
+Reply ONLY with this JSON:
 {{
-  "hq_city": "city or null",
+  "hq_city": "string or null",
   "hq_state_or_province": "2-letter code or null",
   "hq_country": "US or Canada or other or null",
-  "employee_count": "always a number or range e.g. '25', '50-100', '~40'",
-  "employee_count_est": <integer — single best-estimate headcount, use midpoint of any range>,
-  "estimated_revenue": "always an estimate e.g. '$3M', '$5M-$10M'",
-  "revenue_millions_est": <float — single best-estimate revenue in millions USD, e.g. 7.5 for "$5M-$10M">,
-  "website": "official website URL or null",
-  "industry": "one-line description or null",
-  "current_software": "known ERP/accounting software or null",
-  "notes": "anything relevant about size or growth stage"
+  "employee_count": "string",
+  "employee_count_est": <integer>,
+  "estimated_revenue": "string",
+  "revenue_millions_est": <float>,
+  "industry": "string or null"
 }}"""
 
 
-def _synthesize_with_gpt(
-    company_name: str,
-    ddg: dict,
-    ddg_search: str,
-    wikipedia: str,
-    website_text: str,
-    about_text: str,
-    news_headlines: str,
-    opencorporates: str,
-) -> dict | None:
-    """Feed raw search data to GPT-4o-mini to extract structured company info."""
+def _extract_with_gpt(company_name: str, snippet: str) -> dict | None:
     try:
         from openai import OpenAI
         client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-        prompt = _SYNTHESIS_PROMPT.format(
-            company_name=company_name,
-            ddg_abstract=ddg.get("abstract", ""),
-            ddg_website=ddg.get("website", ""),
-            ddg_infobox=ddg.get("infobox", ""),
-            ddg_search=ddg_search[:500] if ddg_search else "",
-            wikipedia=wikipedia[:1000] if wikipedia else "",
-            website_text=website_text[:800] if website_text else "",
-            about_text=about_text[:800] if about_text else "",
-            news_headlines=news_headlines[:300] if news_headlines else "",
-            opencorporates=opencorporates or "",
-        )
-
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": _EXTRACT_PROMPT.format(
+                company_name=company_name,
+                snippet=snippet,
+            )}],
             response_format={"type": "json_object"},
             temperature=0,
-            max_tokens=300,
+            max_tokens=200,
         )
         return json.loads(resp.choices[0].message.content)
     except Exception:
-        logger.exception(f"GPT synthesis failed for: {company_name}")
+        logger.exception(f"GPT extraction failed for: {company_name}")
         return None
 
 
@@ -323,7 +151,7 @@ def _synthesize_with_gpt(
 # Firmographics scoring
 # ---------------------------------------------------------------------------
 
-_ROUTE_THRESHOLD = 7.3
+_ROUTE_THRESHOLD = 7   # erp_likelihood must be >= this to route
 _MAX_EMPLOYEES   = 150
 _MAX_REVENUE_M   = 80.0
 
@@ -331,37 +159,33 @@ _MAX_REVENUE_M   = 80.0
 def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
     """
     Score 0.0–10.0 based on how well the company fits the target profile.
-    Returns (score, exclusion_reason). exclusion_reason is set (and score=0)
-    when the company exceeds hard limits — skip it entirely regardless of article score.
+    Returns (score, exclusion_reason).
 
-    Scoring breakdown (max 10 pts):
-      Employee component (0–5 pts):
-        10–50   → 5.0   sweet spot
-        51–100  → 4.5
-        101–150 → 3.5
-        <10     → 3.0   possibly too small
-        unknown → 3.5   take a risk
-        >150    → EXCLUDED
+    Employee component (0–5 pts):
+      10–50   → 5.0  sweet spot
+      51–100  → 4.5
+      101–150 → 3.5
+      <10     → 3.0
+      unknown → 3.5
+      >150    → EXCLUDED
 
-      Revenue component (0–5 pts):
-        $1M–$15M  → 5.0  sweet spot
-        $15M–$30M → 4.0
-        $30M–$50M → 3.0
-        $50M–$80M → 2.0
-        <$1M      → 2.5  possibly too small
-        unknown   → 3.5  take a risk
-        >$80M     → EXCLUDED
+    Revenue component (0–5 pts):
+      $1M–$15M  → 5.0
+      $15M–$30M → 4.0
+      $30M–$50M → 3.0
+      $50M–$80M → 2.0
+      <$1M      → 2.5
+      unknown   → 3.5
+      >$80M     → EXCLUDED
     """
     emp = enrichment.get("employee_count_est")
     rev = enrichment.get("revenue_millions_est")
 
-    # Hard exclusions
     if emp is not None and emp > _MAX_EMPLOYEES:
         return 0.0, f"employee count too high (~{emp})"
     if rev is not None and rev > _MAX_REVENUE_M:
         return 0.0, f"revenue too high (~${rev:.0f}M)"
 
-    # Employee component
     if emp is None:
         emp_score = 3.5
     elif emp <= 9:
@@ -370,10 +194,9 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
         emp_score = 5.0
     elif emp <= 100:
         emp_score = 4.5
-    else:  # 101–150
+    else:
         emp_score = 3.5
 
-    # Revenue component
     if rev is None:
         rev_score = 3.5
     elif rev < 1:
@@ -384,7 +207,7 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
         rev_score = 4.0
     elif rev <= 50:
         rev_score = 3.0
-    else:  # 50–80
+    else:
         rev_score = 2.0
 
     return emp_score + rev_score, None
@@ -396,8 +219,7 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
 
 def enrich_company(company_name: str) -> dict | None:
     """
-    Look up a company using free sources (DuckDuckGo + Wikipedia),
-    synthesize with GPT-4o-mini, and find their LinkedIn URL.
+    Pull a ZoomInfo snippet via Brave Search, extract firmographics with GPT.
     Results are cached to company_cache.json so each company is only looked up once.
     """
     if not company_name:
@@ -408,34 +230,21 @@ def enrich_company(company_name: str) -> dict | None:
         logger.info(f"Cache hit for '{company_name}'")
         return _company_cache[cache_key]
 
-    ddg = _duckduckgo_instant(company_name)
-    website_url = ddg.get("website", "") or _find_website(company_name)
+    snippet = _zoominfo_data(company_name)
+    if not snippet:
+        logger.info(f"No ZoomInfo data found for '{company_name}' — skipping enrichment")
+        return None
 
-    # Run all free lookups
-    ddg_search = _duckduckgo_search(company_name)
-    wikipedia = _wikipedia_summary(company_name)
-    website_text = _fetch_website_text(website_url)
-    about_text = _fetch_about_page(website_url)
-    news_headlines = _google_news_company(company_name)
-    opencorporates = _opencorporates(company_name)
-    linkedin = _find_linkedin_url(company_name)
+    logger.info(f"ZoomInfo data for '{company_name}': {snippet[:120]}")
 
-    result = _synthesize_with_gpt(
-        company_name, ddg, ddg_search, wikipedia,
-        website_text, about_text, news_headlines, opencorporates,
-    )
+    result = _extract_with_gpt(company_name, snippet)
     if result is None:
         return None
 
-    # Code-level fallbacks — GPT should never return these but guard anyway
     if not result.get("employee_count"):
         result["employee_count"] = "est. 10-50"
     if not result.get("estimated_revenue"):
         result["estimated_revenue"] = "est. $1M-$5M"
-
-    result["linkedin_url"] = linkedin or None
-    if not result.get("website") and website_url:
-        result["website"] = website_url
 
     _company_cache[cache_key] = result
     _save_cache(_company_cache)
@@ -443,17 +252,14 @@ def enrich_company(company_name: str) -> dict | None:
     logger.info(
         f"Enriched '{company_name}': "
         f"{result.get('hq_city')}, {result.get('hq_state_or_province')}, {result.get('hq_country')} | "
-        f"employees={result.get('employee_count')} | "
-        f"rev={result.get('estimated_revenue')} | "
-        f"linkedin={'yes' if linkedin else 'no'}"
+        f"employees={result.get('employee_count')} | rev={result.get('estimated_revenue')}"
     )
     return result
 
 
 def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     """
-    Merge enrichment data into classification, score both article fit and
-    firmographics, and make a final routing decision.
+    Merge enrichment into classification, run dual-score routing decision.
 
     Routing requires ALL of:
       - in_tam_geography is True
@@ -464,7 +270,7 @@ def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     updated = classification.copy()
     updated["enrichment"] = enrichment
 
-    # --- Location merge (only fill gaps, never override Stage 1) -----------
+    # Location merge — only fill gaps, never override Stage 1 classifier
     hq_state   = enrichment.get("hq_state_or_province")
     hq_country = enrichment.get("hq_country")
 
@@ -492,23 +298,18 @@ def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     if rev and updated.get("revenue_estimate") in (None, "unknown", ""):
         updated["revenue_estimate"] = rev
 
-    # --- Hard exclusion + firmographics score ------------------------------
     firmographics_score, exclusion_reason = _firmographics_score(enrichment)
 
     if exclusion_reason:
-        updated["should_route"]       = False
-        updated["exclusion_reason"]   = exclusion_reason
+        updated["should_route"]        = False
+        updated["exclusion_reason"]    = exclusion_reason
         updated["firmographics_score"] = 0.0
         logger.info(f"Hard excluded '{classification.get('company_name')}': {exclusion_reason}")
         return updated
 
-    # --- Dual score average -----------------------------------------------
-    article_score = float(classification.get("article_score") or 5.0)
-    avg_score     = (article_score + firmographics_score) / 2
-
-    updated["article_score"]       = round(article_score, 1)
+    erp_likelihood      = int(classification.get("erp_likelihood") or 0)
     updated["firmographics_score"] = round(firmographics_score, 1)
-    updated["avg_score"]           = round(avg_score, 1)
+    updated["erp_likelihood"]      = erp_likelihood
 
     geo_ok  = updated.get("in_tam_geography")
     signals = updated.get("erp_signals") or []
@@ -516,12 +317,13 @@ def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     updated["should_route"] = bool(
         geo_ok is True
         and len(signals) > 0
-        and avg_score >= _ROUTE_THRESHOLD
+        and erp_likelihood >= _ROUTE_THRESHOLD
+        and firmographics_score >= 5.0
     )
 
     logger.info(
         f"Scored '{classification.get('company_name')}': "
-        f"article={article_score:.1f} | firmographics={firmographics_score:.1f} "
-        f"| avg={avg_score:.1f} | route={'YES' if updated['should_route'] else 'NO'}"
+        f"erp_likelihood={erp_likelihood}/10 | firmographics={firmographics_score:.1f} "
+        f"| geo={geo_ok} | route={'YES' if updated['should_route'] else 'NO'}"
     )
     return updated

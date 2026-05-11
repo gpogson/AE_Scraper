@@ -212,41 +212,46 @@ MAX_ARTICLE_AGE_MINUTES = 20
 MAX_ENTRIES_PER_FEED = 20
 
 CLASSIFICATION_SYSTEM_PROMPT = """
-You are an ERP sales intelligence assistant. Analyze press releases to identify companies that are strong ERP software prospects.
+You are an ERP sales intelligence analyst. Your only job is to read a press release and score how likely the company is to buy an ERP system in the next 12 months because of what this article describes.
 
-IMPORTANT: Evaluate every company as a potential ERP buyer for their own internal operations — regardless of what industry they are in or what they sell. A SaaS company, a law firm, a marketing agency, or a software vendor can need ERP just as much as a manufacturer or distributor. Do not penalize a company's score because they are in a "tech" or "service" industry.
+Do NOT evaluate geography or company size — that is handled separately. Focus entirely on article content and buying signal quality.
 
-A prospect must meet ALL of the following:
-1. GEOGRAPHY: Company HQ is in one of these US states: WA, OR, ID, MT, ND, SD, MN, NE, KS, OK, CO, WY, NM, AZ, UT, NV, CA, AK, HI
-   OR one of these Canadian provinces: YT, NT, BC, AB, SK
-2. REVENUE: Approximately $1M–$15M annually (small-to-mid business). You MUST always provide a revenue_estimate — never return "unknown". Use every available signal to reason about size:
-   - Stated revenue or funding amounts
-   - Employee headcount (1-50 employees ≈ under $5M, 50-100 ≈ $5M-$15M, 100+ ≈ over $15M)
-   - Whether the company is publicly traded (public = almost always too large)
-   - Language like "regional", "local", "family-owned", "startup" = likely in range
-   - Language like "enterprise", "global", "Fortune 500", "multinational" = too large
-   - Raised over $30M in funding = likely too large
-   If you genuinely cannot estimate, write "estimated <$1M" or "estimated $1M-$15M" or "estimated >$15M" based on overall company impression. Set revenue_in_range to null only if the article gives zero size signals whatsoever.
-3. ERP SIGNAL: The article contains at least one of these buying triggers (in priority order):
-   1. "Leadership Change" — any C-suite hire, departure, or new appointment (CEO, CIO, CTO, COO, CFO, VP Ops, Dir of IT)
-   2. "Geographic Expansion" — new location, new market entry, new facility, new office, new warehouse
-   3. "New Product Launch" — new product line, new service offering, new SKU category announced
-   4. "New Funding Round" — investment raised, capital raise, financing secured, flow-through offering
-   5. "Tech Modernization" — digital transformation, legacy system replacement, new software platform
-   6. "Rapid Growth" — operational scaling, significant headcount growth, revenue milestone
-   7. "M&A Activity" — merger, acquisition, being acquired, joint venture
-   8. "Supply Chain Change" — supply chain restructure, new distribution model, logistics change
+Every company is a potential ERP buyer regardless of industry. A SaaS company, law firm, or marketing agency can need ERP just as much as a manufacturer.
 
-should_route must be true only when: in_tam_geography=true AND revenue_in_range is true or null AND erp_signals is non-empty.
+━━━ ERP SIGNAL CATEGORIES ━━━
+Use exact names only:
+1. "Leadership Change" — ONLY a new CEO, CFO, or COO hire or appointment. No other titles qualify. CIO, CTO, VP, Director, and all other positions do NOT trigger this signal.
+2. "Geographic Expansion" — new location, facility, office, warehouse, or market entry
+3. "New Product Launch" — new product line, service offering, or SKU category
+4. "New Funding Round" — investment raised, capital raise, financing secured
+5. "Tech Modernization" — digital transformation, legacy system replacement, new software platform
+6. "Rapid Growth" — operational scaling, significant headcount growth, revenue milestone
+7. "M&A Activity" — merger, acquisition, being acquired, joint venture
+8. "Supply Chain Change" — supply chain restructure, new distribution model, logistics change
 
-For signal_summary: anchor on one specific detail from the article (quoted), then write your own original analysis of what this means operationally. Do not rephrase the article — reason about what actually gets harder for a company this size in this industry. Name the exact ERP pain point. A craft beverage distributor opening a second state has different problems than a SaaS company doing the same. End with a concrete sales talking point.
+━━━ ERP LIKELIHOOD SCORE (1–10) ━━━
+This is your most important output. Score the probability this specific news will lead to an ERP evaluation or purchase in the next 12 months.
 
-For article_score (1.0–10.0), score how strongly this article signals an imminent ERP evaluation need. Score on these dimensions:
-- Signal strength: how directly does the trigger event create operational complexity requiring ERP?
-- Specificity: does the article give concrete operational detail, or is it vague?
-- Signal count: multiple signals score higher than one
-- Size confidence: how clearly does the article confirm the company is in the target revenue/headcount range?
-Score honestly based on the article alone. Do not adjust the score to influence routing — that decision is made separately.
+Before scoring, reason through these questions:
+1. What is the BEFORE state? How was the company operating before this news?
+2. What is the AFTER state? What changes operationally?
+3. Does the transition cross a complexity threshold that breaks current systems?
+4. Who made the decision? A new CIO signals active evaluation. A routine press release does not.
+
+Score calibration:
+10   → Automatic 10: new CEO, CFO, or COO hired or appointed. These are the people who buy ERP. Always score 10 regardless of other context.
+9  → Imminent. Clear inflection point with no leadership change. First multi-state expansion for a small company. PE acquisition. Article explicitly mentions system pain or legacy replacement.
+7-8  → Strong. Real complexity jump. First funding round at a physical-goods company. Going from 2 to 6 locations. New product line requiring separate inventory tracking.
+4–6  → Moderate. Signal exists but context is thin or company may already have systems. Expansion from 10→14 locations. Routine growth announcement.
+2–3  → Weak. Incremental. Company sounds like it already has infrastructure. 30→35 locations. Large enterprise language.
+1    → No signal. Article is about something unrelated to operational complexity.
+
+━━━ SIGNAL SUMMARY ━━━
+3–5 sentences written for an ERP sales rep. Requirements:
+(1) Quote a specific word or phrase from the article to show you read it.
+(2) Reason about what operationally breaks or gets harder — do NOT rephrase the article.
+(3) Name the exact ERP pain: multi-state sales tax nexus, inventory split across locations, multi-entity consolidation, new product line in a separate margin bucket, payroll across two jurisdictions. Be specific to the industry.
+(4) End with one concrete talking point tied to the announced news.
 
 Respond with valid JSON only. No markdown, no explanation."""
 
@@ -259,18 +264,9 @@ Content: {content}
 Return exactly this JSON structure:
 {{
   "company_name": "string or null",
-  "location": {{
-    "city": "string or null",
-    "state_or_province": "2-letter code or null",
-    "country": "US or Canada or other or null"
-  }},
-  "in_tam_geography": true/false/null,
-  "revenue_estimate": "e.g. '$5M' or 'unknown' or '$50M+ (too large)'",
-  "revenue_in_range": true/false/null,
-  "erp_signals": ["use exact signal names from the defined list, e.g. 'Leadership Change', 'New Funding Round'"],
-  "signal_summary": "3-5 sentences written for an ERP salesperson. REQUIREMENTS: (1) Anchor on a specific detail from the article — quote a word or phrase in double-quotes to show you read it, e.g. they announced a \"second distribution hub in Nevada\". (2) The rest of the summary must be your OWN analysis — do NOT just rephrase what the article says. Reason about what this event means operationally for a company of this size in this industry. What specifically breaks or gets harder? (3) Name the exact ERP pain: multi-state sales tax nexus, inventory split across locations, multi-entity consolidation, tracking a new product line in a separate margin bucket, payroll across two jurisdictions, etc. Be specific to their industry — a craft beverage distributor expanding states has different pain than a SaaS company doing the same. (4) End with one concrete talking point the sales rep can open with, tied to what was announced.",
-  "sub_industry": "specific sub-industry, not just the top-level. Examples: medical device manufacturing, craft beverage distribution, specialty chemical wholesale, commercial HVAC contractor, agricultural equipment dealer",
-  "should_route": true/false,
-  "article_score": 1.0-10.0 (score the article's ERP evaluation relevance on the dimensions above),
-  "routing_reason": "brief explanation of the routing decision"
+  "erp_signals": ["exact signal names from the defined list"],
+  "erp_likelihood": <integer 1-10>,
+  "likelihood_reasoning": "2-3 sentences: what is the before state, what changes after this news, and why this does or does not cross a complexity threshold that ERP solves",
+  "signal_summary": "3-5 sentences for an ERP sales rep per the requirements above",
+  "sub_industry": "specific sub-industry e.g. craft beverage distribution, specialty chemical wholesale, commercial HVAC contractor, agricultural equipment dealer"
 }}"""

@@ -61,9 +61,8 @@ def run_pipeline(dry_run: bool = False):
 
         company_name = result.get("company_name")
 
-        # Stage 2: Perplexity enrichment
-        # Trigger for anything with ERP signals — let Perplexity confirm geography
-        needs_enrichment = bool(result.get("erp_signals"))
+        # Only enrich when the article itself is a strong enough signal
+        needs_enrichment = (result.get("erp_likelihood") or 0) >= 6
 
         if needs_enrichment and company_name:
             logger.info(f"Enriching: {company_name}")

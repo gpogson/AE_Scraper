@@ -20,8 +20,9 @@ def _get_client() -> OpenAI:
 
 def classify_article(article: dict) -> dict | None:
     """
-    Send the article to GPT-4o-mini for TAM + ERP signal classification.
+    Send the article to GPT-4o-mini for ERP signal classification.
     Returns parsed JSON dict, or None on failure.
+    Geography and size checks happen downstream in enrichment.
     """
     prompt = CLASSIFICATION_USER_PROMPT.format(
         title=article["title"],
@@ -38,40 +39,22 @@ def classify_article(article: dict) -> dict | None:
             ],
             response_format={"type": "json_object"},
             temperature=0,
-            max_tokens=500,
+            max_tokens=600,
         )
 
         raw = response.choices[0].message.content
         result = json.loads(raw)
 
-        should = result.get("should_route", False)
-        article_score = result.get("article_score", 0)
+        likelihood = result.get("erp_likelihood", 0)
         company = result.get("company_name", "?")
+        signals = result.get("erp_signals", [])
+        reasoning = result.get("likelihood_reasoning", "")
 
-        if should:
-            reason = result.get("routing_reason", "")
-            logger.info(
-                f"Classified '{article['title'][:55]}...' "
-                f"→ ROUTE ✓ | {company} | article_score={article_score:.1f}/10 | {reason}"
-            )
-        else:
-            geo = result.get("in_tam_geography")
-            rev = result.get("revenue_in_range")
-            signals = result.get("erp_signals", [])
-            skip_reasons = []
-            if geo is False:
-                loc = result.get("location", {})
-                location_str = ", ".join(filter(None, [loc.get("state_or_province"), loc.get("country")]))
-                skip_reasons.append(f"outside TAM geography ({location_str or 'unknown location'})")
-            if rev is False:
-                skip_reasons.append(f"revenue out of range ({result.get('revenue_estimate', '?')})")
-            if not signals:
-                skip_reasons.append("no ERP signals")
-            skip_str = " | ".join(skip_reasons) if skip_reasons else result.get("routing_reason", "no reason given")
-            logger.info(
-                f"Classified '{article['title'][:55]}...' "
-                f"→ skip | {company} | score={article_score:.1f}/10 | {skip_str}"
-            )
+        logger.info(
+            f"Classified '{article['title'][:55]}...' "
+            f"→ {company} | likelihood={likelihood}/10 | signals={signals} | {reasoning[:80]}"
+        )
+
         return result
 
     except json.JSONDecodeError:

@@ -13,6 +13,8 @@ Example:
 import sys
 import logging
 import re
+import sys
+sys.stdout.reconfigure(encoding="utf-8")
 
 import requests
 from dotenv import load_dotenv
@@ -83,15 +85,15 @@ def main():
         print("ERROR: Classification failed")
         sys.exit(1)
 
-    print(f"Company:      {result.get('company_name')}")
-    print(f"Location:     {result.get('location')}")
-    print(f"Geography OK: {result.get('in_tam_geography')}")
-    print(f"Revenue:      {result.get('revenue_estimate')}")
-    print(f"Signals:      {result.get('erp_signals')}")
-    print(f"Should route: {result.get('should_route')}")
+    likelihood = result.get("erp_likelihood") or 0
+    print(f"Company:        {result.get('company_name')}")
+    print(f"Signals:        {result.get('erp_signals')}")
+    print(f"ERP Likelihood: {likelihood}/10")
+    print(f"Reasoning:      {result.get('likelihood_reasoning')}")
+    print(f"Sub-industry:   {result.get('sub_industry')}")
 
-    if result.get("erp_signals"):
-        print("\n[3/3] Stage 2 — Company enrichment (DuckDuckGo + Wikipedia)...")
+    if likelihood >= 6:
+        print("\n[3/3] Stage 2 — Company enrichment (ZoomInfo via Brave)...")
         company_name = result.get("company_name")
         enrichment = enrich_company(company_name)
 
@@ -100,18 +102,19 @@ def main():
             print(f"Employees:    {enrichment.get('employee_count')}")
             print(f"Revenue:      {enrichment.get('estimated_revenue')}")
             print(f"Website:      {enrichment.get('website')}")
-            print(f"LinkedIn:     {enrichment.get('linkedin_url')}")
             print(f"Software:     {enrichment.get('current_software')}")
             print(f"Industry:     {enrichment.get('industry')}")
 
             result = apply_enrichment(result, enrichment)
-            print(f"\nFinal route:  {result.get('should_route')}")
-            print(f"Final geo:    {result.get('in_tam_geography')}")
-            print(f"Final rev:    {result.get('revenue_estimate')}")
+            print(f"\nFinal route:       {result.get('should_route')}")
+            print(f"Final geo:         {result.get('in_tam_geography')}")
+            print(f"Firmographics:     {result.get('firmographics_score')}")
+            if result.get("exclusion_reason"):
+                print(f"Excluded because: {result.get('exclusion_reason')}")
         else:
             print("Enrichment returned no data")
     else:
-        print("\n[3/3] Skipping enrichment — no ERP signals detected")
+        print(f"\n[3/3] Skipping enrichment — erp_likelihood {likelihood}/10 below threshold of 6")
 
     print(f"\n{'='*60}")
     print(f"FINAL DECISION: {'✅ ROUTE TO DISCORD' if result.get('should_route') else '❌ SKIP'}")
