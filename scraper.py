@@ -38,6 +38,18 @@ def _parse_published(entry) -> datetime | None:
     return None
 
 
+def _fetch_full_text(url: str) -> str:
+    """Fetch full article body via newspaper3k. Returns empty string on any failure."""
+    try:
+        from newspaper import Article
+        art = Article(url, request_timeout=8)
+        art.download()
+        art.parse()
+        return art.text.strip()
+    except Exception:
+        return ""
+
+
 def fetch_new_articles() -> list[dict]:
     """Fetch entries from all configured RSS feeds published within MAX_ARTICLE_AGE_MINUTES."""
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=MAX_ARTICLE_AGE_MINUTES)
@@ -71,7 +83,9 @@ def fetch_new_articles() -> list[dict]:
                 if not content_raw and entry.get("content"):
                     content_raw = entry["content"][0].get("value", "")
 
-                content = _strip_html(content_raw)[:3000]
+                rss_content = _strip_html(content_raw)
+                full_text = _fetch_full_text(url)
+                content = (full_text if len(full_text) > len(rss_content) else rss_content)[:4000]
                 pub_str = pub_dt.strftime("%Y-%m-%d %H:%M UTC") if pub_dt else entry.get("published", "unknown")
 
                 articles.append({
