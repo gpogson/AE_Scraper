@@ -69,6 +69,14 @@ def run_pipeline(dry_run: bool = False):
             enrichment = enrich_company(company_name)
             if enrichment:
                 result = apply_enrichment(result, enrichment)
+            else:
+                likelihood = result.get("erp_likelihood") or 0
+                signals = result.get("erp_signals") or []
+                if likelihood >= 7 and signals:
+                    result["should_route"] = True
+                    result["unverified_geo"] = True
+                    result["routing_reason"] = "⚠️ unverified geography/size — ZoomInfo not found"
+                    logger.info(f"Fallback route (no ZoomInfo): {company_name} | likelihood={likelihood}/10")
 
         if result.get("should_route"):
             routed_count += 1

@@ -33,28 +33,26 @@ _company_cache: dict = _load_cache()
 
 
 # ---------------------------------------------------------------------------
-# Brave Search — ZoomInfo snippet
+# Serper.dev Search — ZoomInfo snippet
 # ---------------------------------------------------------------------------
 
 def _zoominfo_data(company_name: str) -> str:
     """
-    Search Brave for the company's ZoomInfo page.
-    Returns a combined text block from the description + FAQ Q&A cards,
-    which Brave extracts directly from ZoomInfo without needing to load the page.
+    Search Serper.dev (Google) for the company's ZoomInfo page.
+    Returns a combined text block from the organic snippet + People Also Ask Q&A.
     """
-    api_key = os.environ.get("BRAVE_API_KEY", "")
+    api_key = os.environ.get("SERPER_API_KEY", "")
     if not api_key:
-        logger.warning("BRAVE_API_KEY not set — skipping enrichment")
+        logger.warning("SERPER_API_KEY not set — skipping enrichment")
         return ""
 
     try:
-        resp = requests.get(
-            "https://api.search.brave.com/res/v1/web/search",
-            params={"q": f'"{company_name}" site:zoominfo.com', "count": 3},
+        resp = requests.post(
+            "https://google.serper.dev/search",
+            json={"q": f'"{company_name}" site:zoominfo.com/c/', "num": 5},
             headers={
-                "Accept": "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": api_key,
+                "X-API-KEY": api_key,
+                "Content-Type": "application/json",
             },
             timeout=10,
         )
@@ -64,15 +62,15 @@ def _zoominfo_data(company_name: str) -> str:
         data = resp.json()
         parts = []
 
-        # Web result description (employee count, HQ, industry summary)
-        for r in data.get("web", {}).get("results", []):
-            if "zoominfo.com" in r.get("url", ""):
-                desc = r.get("description", "")
-                if desc:
-                    parts.append(desc)
+        # Organic result snippet (employee count, HQ, industry summary)
+        for r in data.get("organic", []):
+            if "zoominfo.com" in r.get("link", ""):
+                snippet = r.get("snippet", "")
+                if snippet:
+                    parts.append(snippet)
                 break
 
-        # FAQ cards — Brave extracts these as structured Q&A from ZoomInfo
+        # People Also Ask — structured Q&A sourced from ZoomInfo
         # Keep company-level facts only; skip individual employee entries
         keep = {"revenue", "employee", "headquarter", "address", "location",
                 "industry", "founded", "size", "website"}
@@ -82,19 +80,19 @@ def _zoominfo_data(company_name: str) -> str:
                 "acquired", "technology"}
         import re
         strip_tags = re.compile(r"<[^>]+>")
-        for faq in data.get("faq", {}).get("results", []):
+        for faq in data.get("peopleAlsoAsk", []):
             q = faq.get("question", "").lower()
             if any(s in q for s in skip):
                 continue
             if any(k in q for k in keep):
-                a = strip_tags.sub("", faq.get("answer", "")).strip()
+                a = strip_tags.sub("", faq.get("snippet", "")).strip()
                 if a:
                     parts.append(f"{faq['question']}: {a}")
 
         return "\n".join(parts)
 
     except Exception:
-        logger.debug(f"Brave ZoomInfo search failed for: {company_name}")
+        logger.debug(f"Serper ZoomInfo search failed for: {company_name}")
     return ""
 
 

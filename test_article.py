@@ -93,7 +93,7 @@ def main():
     print(f"Sub-industry:   {result.get('sub_industry')}")
 
     if likelihood >= 6:
-        print("\n[3/3] Stage 2 — Company enrichment (ZoomInfo via Brave)...")
+        print("\n[3/3] Stage 2 — Company enrichment (ZoomInfo via Serper.dev)...")
         company_name = result.get("company_name")
         enrichment = enrich_company(company_name)
 
@@ -113,6 +113,10 @@ def main():
                 print(f"Excluded because: {result.get('exclusion_reason')}")
         else:
             print("Enrichment returned no data")
+            if likelihood >= 7 and result.get("erp_signals"):
+                result["should_route"] = True
+                result["unverified_geo"] = True
+                result["routing_reason"] = "⚠️ unverified geography/size — ZoomInfo not found"
     else:
         print(f"\n[3/3] Skipping enrichment — erp_likelihood {likelihood}/10 below threshold of 6")
 
