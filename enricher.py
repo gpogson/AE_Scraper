@@ -33,13 +33,13 @@ _company_cache: dict = _load_cache()
 
 
 # ---------------------------------------------------------------------------
-# Serper.dev Search — ZoomInfo snippet
+# Serper.dev — broad Google search for company firmographics
 # ---------------------------------------------------------------------------
 
-def _zoominfo_data(company_name: str) -> str:
+def _serper_search(company_name: str) -> str:
     """
-    Search Serper.dev (Google) for the company's ZoomInfo page.
-    Returns a combined text block from the organic snippet + People Also Ask Q&A.
+    Search Google via Serper for company revenue, employees, and website.
+    Returns concatenated snippets from top 10 results + Knowledge Graph.
     """
     api_key = os.environ.get("SERPER_API_KEY", "")
     if not api_key:
@@ -49,7 +49,7 @@ def _zoominfo_data(company_name: str) -> str:
     try:
         resp = requests.post(
             "https://google.serper.dev/search",
-            json={"q": f'"{company_name}" site:zoominfo.com/c/', "num": 5},
+            json={"q": f'"{company_name}" company revenue employees website', "num": 10},
             headers={
                 "X-API-KEY": api_key,
                 "Content-Type": "application/json",
@@ -62,37 +62,24 @@ def _zoominfo_data(company_name: str) -> str:
         data = resp.json()
         parts = []
 
-        # Organic result snippet (employee count, HQ, industry summary)
-        for r in data.get("organic", []):
-            if "zoominfo.com" in r.get("link", ""):
-                snippet = r.get("snippet", "")
-                if snippet:
-                    parts.append(snippet)
-                break
+        # Knowledge Graph — best structured data when Google recognizes the company
+        kg = data.get("knowledgeGraph", {})
+        if kg:
+            parts.append(f"{kg.get('title', '')} — {kg.get('description', '')}")
+            for attr, val in kg.get("attributes", {}).items():
+                parts.append(f"{attr}: {val}")
 
-        # People Also Ask — structured Q&A sourced from ZoomInfo
-        # Keep company-level facts only; skip individual employee entries
-        keep = {"revenue", "employee", "headquarter", "address", "location",
-                "industry", "founded", "size", "website"}
-        skip = {"email", "phone", "work in", "work for", "contact", "role in",
-                "latest job", "direct phone", "colleague", "based", "education",
-                "stock symbol", "naics", "sic code", "competition", "social media",
-                "acquired", "technology"}
-        import re
-        strip_tags = re.compile(r"<[^>]+>")
-        for faq in data.get("peopleAlsoAsk", []):
-            q = faq.get("question", "").lower()
-            if any(s in q for s in skip):
-                continue
-            if any(k in q for k in keep):
-                a = strip_tags.sub("", faq.get("snippet", "")).strip()
-                if a:
-                    parts.append(f"{faq['question']}: {a}")
+        # Top 10 organic result snippets
+        for r in data.get("organic", []):
+            title = r.get("title", "")
+            snippet = r.get("snippet", "")
+            if snippet:
+                parts.append(f"{title}: {snippet}")
 
         return "\n".join(parts)
 
     except Exception:
-        logger.debug(f"Serper ZoomInfo search failed for: {company_name}")
+        logger.debug(f"Serper search failed for: {company_name}")
     return ""
 
 
@@ -100,15 +87,17 @@ def _zoominfo_data(company_name: str) -> str:
 # GPT extraction
 # ---------------------------------------------------------------------------
 
-_EXTRACT_PROMPT = """Extract firmographic data from this ZoomInfo snippet about "{company_name}".
+_EXTRACT_PROMPT = """You are extracting firmographic data about "{company_name}" from these Google search results.
 
-Snippet: {snippet}
+Search results:
+{snippet}
 
-Rules:
-- employee_count: exact string from snippet e.g. "42", "50-200". If missing, estimate from revenue or industry.
-- employee_count_est: integer best-estimate (midpoint if range)
-- estimated_revenue: exact string from snippet e.g. "$8M". If missing, estimate from headcount.
-- revenue_millions_est: float best-estimate in millions e.g. 8.0
+Rules — you MUST always return a number, never null or unknown:
+- employee_count: exact string if found e.g. "42", "50-200". If not found, estimate from revenue, industry, or company stage and prefix with "est."
+- employee_count_est: integer best-estimate (midpoint if range). Default to 25 if no data at all.
+- estimated_revenue: exact string if found e.g. "$8M". If not found, estimate from headcount or funding and prefix with "est."
+- revenue_millions_est: float best-estimate in millions. Default to 3.0 if no data at all.
+- website: the company's official homepage URL (not LinkedIn, not news articles). Extract from search results.
 - hq_city, hq_state_or_province (2-letter code), hq_country ("US", "Canada", or "other")
 - industry: one-line description
 
@@ -121,6 +110,7 @@ Reply ONLY with this JSON:
   "employee_count_est": <integer>,
   "estimated_revenue": "string",
   "revenue_millions_est": <float>,
+  "website": "string or null",
   "industry": "string or null"
 }}"""
 
@@ -217,7 +207,7 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
 
 def enrich_company(company_name: str) -> dict | None:
     """
-    Pull a ZoomInfo snippet via Brave Search, extract firmographics with GPT.
+    Search Google via Serper, extract firmographics with GPT.
     Results are cached to company_cache.json so each company is only looked up once.
     """
     if not company_name:
@@ -228,12 +218,12 @@ def enrich_company(company_name: str) -> dict | None:
         logger.info(f"Cache hit for '{company_name}'")
         return _company_cache[cache_key]
 
-    snippet = _zoominfo_data(company_name)
+    snippet = _serper_search(company_name)
     if not snippet:
-        logger.info(f"No ZoomInfo data found for '{company_name}' — skipping enrichment")
+        logger.info(f"No Serper data found for '{company_name}' — skipping enrichment")
         return None
 
-    logger.info(f"ZoomInfo data for '{company_name}': {snippet[:120]}")
+    logger.info(f"Serper data for '{company_name}': {snippet[:120]}")
 
     result = _extract_with_gpt(company_name, snippet)
     if result is None:

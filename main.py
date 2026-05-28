@@ -84,7 +84,7 @@ def run_pipeline(dry_run: bool = False):
                 logger.info(
                     f"[DRY RUN] Would notify: {result.get('company_name')} "
                     f"| signals={result.get('erp_signals')} "
-                    f"| confidence={result.get('confidence')}"
+                    f"| erp_likelihood={result.get('erp_likelihood')}"
                 )
             else:
                 send_discord_notification(article, result)
