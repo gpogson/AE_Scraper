@@ -61,8 +61,8 @@ def run_pipeline(dry_run: bool = False):
 
         company_name = result.get("company_name")
 
-        # Only enrich when the article itself is a strong enough signal
-        needs_enrichment = (result.get("erp_likelihood") or 0) >= 6
+        # Only enrich high-scoring leads (8+) to conserve Serper credits
+        needs_enrichment = (result.get("erp_likelihood") or 0) >= 8
 
         if needs_enrichment and company_name:
             logger.info(f"Enriching: {company_name}")
