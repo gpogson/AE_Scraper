@@ -150,10 +150,6 @@ RSS_FEEDS = [
         "name": "LA-BusinessJournal",
         "url": "https://labusinessjournal.com/feed/",
     },
-    {
-        "name": "SanDiego-BusinessJournal",
-        "url": "https://www.sdbj.com/feed/",
-    },
 
     # --- Hiring signals (CFO/Controller = ERP evaluation incoming) ---
     {
@@ -161,18 +157,138 @@ RSS_FEEDS = [
         "url": "https://remoteok.com/remote-finance-jobs.rss",
     },
 
-    # --- Industry verticals (distribution, manufacturing, logistics) ---
+    # --- Manufacturing trade publications ---
     {
-        "name": "MDM-Distribution",
-        "url": "https://www.mdm.com/feed/",
+        "name": "IndustryWeek",
+        "url": "https://www.industryweek.com/rss/all",
     },
     {
         "name": "ManufacturingDive",
         "url": "https://www.manufacturingdive.com/feeds/news/",
     },
     {
+        "name": "ManufacturingNet",
+        "url": "https://www.manufacturing.net/rss/all",
+    },
+    {
+        "name": "TheFabricator",
+        "url": "https://www.thefabricator.com/thefabricator/rss",
+    },
+    {
+        "name": "AssemblyMag",
+        "url": "https://www.assemblymag.com/rss/all",
+    },
+    {
+        "name": "PlantEngineering",
+        "url": "https://www.plantengineering.com/rss/all",
+    },
+    {
+        "name": "ModernMachineShop",
+        "url": "https://www.mmsonline.com/rss",
+    },
+
+    # --- Food & beverage manufacturing ---
+    {
+        "name": "FoodProcessing",
+        "url": "https://www.foodprocessing.com/rss/",
+    },
+    {
+        "name": "FoodEngineering",
+        "url": "https://www.foodengineeringmag.com/rss/all",
+    },
+    {
+        "name": "BeverageIndustry",
+        "url": "https://www.bevindustry.com/rss/all",
+    },
+    {
+        "name": "BrewingIndustryGuide",
+        "url": "https://www.brewbound.com/feed",
+    },
+
+    # --- Plastics, packaging, wood, building products ---
+    {
+        "name": "PlasticsToday",
+        "url": "https://www.plasticstoday.com/rss.xml",
+    },
+    {
+        "name": "WoodworkingNetwork",
+        "url": "https://www.woodworkingnetwork.com/rss.xml",
+    },
+    {
+        "name": "PackagingWorld",
+        "url": "https://www.packworld.com/rss.xml",
+    },
+
+    # --- Canadian manufacturing ---
+    {
+        "name": "CanadianManufacturing",
+        "url": "https://www.canadianmanufacturing.com/feed/",
+    },
+    {
+        "name": "CanadianMetalworking",
+        "url": "https://www.canadianmetalworking.com/rss",
+    },
+
+    # --- Distribution & logistics ---
+    {
+        "name": "MDM-Distribution",
+        "url": "https://www.mdm.com/feed/",
+    },
+    {
         "name": "FreightWaves",
         "url": "https://www.freightwaves.com/news/feed",
+    },
+
+    # --- Google News RSS — manufacturers in TAM by region ---
+    {
+        "name": "GoogleNews-Manufacturer-PNW",
+        "url": "https://news.google.com/rss/search?q=manufacturer+OR+%22manufacturing+plant%22+expansion+OR+%22new+facility%22+OR+acquisition+Washington+OR+Oregon+OR+Idaho&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-Manufacturer-Mountain",
+        "url": "https://news.google.com/rss/search?q=manufacturer+OR+%22manufacturing+plant%22+expansion+OR+%22new+facility%22+OR+acquisition+Colorado+OR+Utah+OR+Arizona+OR+Nevada&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-Manufacturer-California",
+        "url": "https://news.google.com/rss/search?q=manufacturer+OR+%22manufacturing+facility%22+expansion+OR+%22new+plant%22+OR+acquisition+California&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-Manufacturer-Plains",
+        "url": "https://news.google.com/rss/search?q=manufacturer+OR+%22manufacturing+plant%22+expansion+OR+%22new+facility%22+OR+acquisition+Montana+OR+%22North+Dakota%22+OR+Nebraska+OR+Kansas+OR+Minnesota&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-Manufacturer-Canada-West",
+        "url": "https://news.google.com/rss/search?q=manufacturer+OR+%22manufacturing+plant%22+expansion+OR+%22new+facility%22+OR+acquisition+%22British+Columbia%22+OR+Alberta+OR+Saskatchewan&hl=en-CA&gl=CA&ceid=CA:en",
+    },
+
+    # --- Google News RSS — manufacturing sub-verticals ---
+    {
+        "name": "GoogleNews-FoodBevManufacturer",
+        "url": "https://news.google.com/rss/search?q=%22food+manufacturer%22+OR+%22beverage+manufacturer%22+OR+%22food+production%22+OR+brewery+OR+winery+expansion+OR+acquisition+OR+%22new+facility%22+-cannabis+-marijuana+-dispensary&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-MetalFab",
+        "url": "https://news.google.com/rss/search?q=%22metal+fabricat%22+OR+%22steel+fabricat%22+OR+%22precision+machining%22+OR+%22metal+manufacturer%22+expansion+OR+acquisition+OR+%22new+facility%22+-automotive+-%22auto+parts%22+-OEM&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-PlasticsManufacturer",
+        "url": "https://news.google.com/rss/search?q=%22plastics+manufacturer%22+OR+%22injection+molding%22+OR+%22plastic+fabricat%22+expansion+OR+acquisition+OR+%22new+facility%22+-cannabis+-marijuana+-automotive&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-BuildingProducts",
+        "url": "https://news.google.com/rss/search?q=%22building+products%22+OR+%22wood+products%22+OR+lumber+OR+millwork+manufacturer+expansion+OR+acquisition+OR+%22new+facility%22&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-AgriManufacturer",
+        "url": "https://news.google.com/rss/search?q=%22agricultural+equipment%22+OR+%22farm+equipment%22+OR+%22agri+manufacturer%22+expansion+OR+acquisition+OR+%22new+facility%22&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-ContractManufacturer",
+        "url": "https://news.google.com/rss/search?q=%22contract+manufacturer%22+OR+%22contract+manufacturing%22+expansion+OR+acquisition+OR+%22new+facility%22+-cannabis+-marijuana+-automotive&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GoogleNews-ManufacturingERP",
+        "url": "https://news.google.com/rss/search?q=manufacturer+%22ERP%22+OR+%22enterprise+software%22+OR+%22digital+transformation%22+OR+%22legacy+system%22+-cannabis+-automotive&hl=en-US&gl=US&ceid=US:en",
     },
 
     # --- Seeking Alpha / PR feeds via Google News by city ---
@@ -217,6 +333,8 @@ You are an ERP sales intelligence analyst. Your only job is to read a press rele
 Do NOT evaluate geography or company size — that is handled separately. Focus entirely on article content and buying signal quality.
 
 Every company is a potential ERP buyer regardless of industry. A SaaS company, law firm, or marketing agency can need ERP just as much as a manufacturer.
+
+DO NOT score cannabis/marijuana companies or large automotive OEMs (Ford, GM, Toyota, Stellantis, etc.). Score these 1 and leave erp_signals empty.
 
 ━━━ ERP SIGNAL CATEGORIES ━━━
 Use exact names only:
