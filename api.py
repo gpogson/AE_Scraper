@@ -53,7 +53,7 @@ def check_auth(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, _: None = Depends(check_auth)):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+    return templates.TemplateResponse(request, "dashboard.html")
 
 
 @app.get("/api/stats")
