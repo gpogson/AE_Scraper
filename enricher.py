@@ -67,6 +67,29 @@ def _serper_search(company_name: str) -> str:
 # GPT extraction
 # ---------------------------------------------------------------------------
 
+_ESTIMATE_FROM_ARTICLE_PROMPT = """Extract what you can about "{company_name}" from this press release.
+
+Article:
+{article_content}
+
+Pull location from datelines (e.g. "SEATTLE, WA —"), HQ mentions, or where the company operates.
+Estimate revenue and headcount from funding size, facility scale, growth language, and industry norms.
+Prefix estimates with "est." — never return null for numeric fields.
+
+Reply ONLY with this JSON:
+{{
+  "hq_city": "string or null",
+  "hq_state_or_province": "2-letter code or null",
+  "hq_country": "US or Canada or other or null",
+  "employee_count": "string",
+  "employee_count_est": <integer>,
+  "estimated_revenue": "string",
+  "revenue_millions_est": <float>,
+  "website": "string or null",
+  "industry": "string or null"
+}}"""
+
+
 _EXTRACT_PROMPT = """You are extracting firmographic data about "{company_name}" from these Google search results.
 
 Search results:
@@ -93,6 +116,27 @@ Reply ONLY with this JSON:
   "website": "string or null",
   "industry": "string or null"
 }}"""
+
+
+def _estimate_from_article(company_name: str, article_content: str) -> dict | None:
+    """Estimate firmographics from article text when Serper returns nothing."""
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": _ESTIMATE_FROM_ARTICLE_PROMPT.format(
+                company_name=company_name,
+                article_content=article_content[:3000],
+            )}],
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=200,
+        )
+        return json.loads(resp.choices[0].message.content)
+    except Exception:
+        logger.debug(f"Article-based estimation failed for: {company_name}")
+        return None
 
 
 def _extract_with_gpt(company_name: str, snippet: str) -> dict | None:
@@ -185,9 +229,10 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def enrich_company(company_name: str) -> dict | None:
+def enrich_company(company_name: str, article_content: str = "") -> dict | None:
     """
     Look up company firmographics via Serper + GPT.
+    Falls back to extracting estimates from article content if Serper finds nothing.
     L1: in-memory cache (process lifetime).
     L2: Postgres company_cache table (persists across deploys).
     """
@@ -203,7 +248,7 @@ def enrich_company(company_name: str) -> dict | None:
 
     # L2: database
     try:
-        from db import get_cached_company, set_cached_company
+        from db import get_cached_company
         cached = get_cached_company(cache_key)
         if cached:
             _memory_cache[cache_key] = cached
@@ -211,16 +256,17 @@ def enrich_company(company_name: str) -> dict | None:
             return cached
     except Exception:
         logger.debug("DB cache lookup failed", exc_info=True)
-        set_cached_company = None  # type: ignore
 
     snippet = _serper_search(company_name)
-    if not snippet:
-        logger.info(f"No Serper data found for '{company_name}' — skipping enrichment")
+    if snippet:
+        logger.info(f"Serper data for '{company_name}': {snippet[:120]}")
+        result = _extract_with_gpt(company_name, snippet)
+    elif article_content:
+        logger.info(f"No Serper data for '{company_name}' — estimating from article content")
+        result = _estimate_from_article(company_name, article_content)
+    else:
+        logger.info(f"No Serper data for '{company_name}' and no article content — skipping enrichment")
         return None
-
-    logger.info(f"Serper data for '{company_name}': {snippet[:120]}")
-
-    result = _extract_with_gpt(company_name, snippet)
     if result is None:
         return None
 

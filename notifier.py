@@ -55,12 +55,11 @@ def send_discord_notification(article: dict, classification: dict):
     reasoning           = classification.get("likelihood_reasoning") or ""
     sub_industry        = classification.get("sub_industry") or ""
 
-    enrichment      = classification.get("enrichment") or {}
-    employees       = enrichment.get("employee_count")
+    enrichment       = classification.get("enrichment") or {}
+    employees        = enrichment.get("employee_count")
     current_software = enrichment.get("current_software")
-    website         = enrichment.get("website")
-    enriched        = bool(enrichment)
-    unverified      = classification.get("unverified_geo", False)
+    website          = enrichment.get("website")
+    enriched         = bool(enrichment)
 
     company_url    = website or article["url"]
     industry_value = sub_industry or enrichment.get("industry") or "—"
@@ -73,10 +72,10 @@ def send_discord_notification(article: dict, classification: dict):
     fields = [
         {"name": "\U0001f4f0 Article", "value": f"[Read Article]({article['url']})", "inline": False},
         {"name": "\U0001f4ca Score",   "value": score_line, "inline": False},
-        {"name": "\U0001f4cd Location",    "value": "⚠️ unverified — ZoomInfo not found" if unverified else _location_str(location) + (" \U0001f50d" if enriched else ""), "inline": True},
-        {"name": "\U0001f4b0 Revenue Est.", "value": "⚠️ unverified" if unverified else revenue + (" \U0001f50d" if enriched else ""), "inline": True},
-        {"name": "\U0001f465 Employees",   "value": "⚠️ unverified" if unverified else (employees + (" \U0001f50d" if enriched else "") if employees else "Unknown"), "inline": True},
-        {"name": "\U0001f3ed Industry",    "value": industry_value[:512], "inline": True},
+        {"name": "\U0001f4cd Location",     "value": _location_str(location) + (" \U0001f50d" if enriched else ""), "inline": True},
+        {"name": "\U0001f4b0 Revenue Est.", "value": revenue + (" \U0001f50d" if enriched else ""), "inline": True},
+        {"name": "\U0001f465 Employees",    "value": (employees + (" \U0001f50d" if enriched else "") if employees else "Unknown"), "inline": True},
+        {"name": "\U0001f3ed Industry",     "value": industry_value[:512], "inline": True},
     ]
 
     if current_software:
