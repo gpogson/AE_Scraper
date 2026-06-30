@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ERP Signal Monitor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #080c14;
+      color: #e2e8f0;
+      margin: 0;
+    }
+    .card {
+      background: #0f1623;
+      border: 1px solid #1e2940;
+      border-radius: 14px;
+    }
+    .kpi-card {
+      background: #0f1623;
+      border: 1px solid #1e2940;
+      border-radius: 14px;
+      padding: 20px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      border-radius: 14px 14px 0 0;
+    }
+    .kpi-blue::before   { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .kpi-sky::before    { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+    .kpi-violet::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+    .kpi-green::before  { background: linear-gradient(90deg, #10b981, #34d399); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .dot-pulse {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      animation: pulse-anim 2s ease-in-out infinite;
+    }
+    @keyframes pulse-anim {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.85); }
+    }
+    .funnel-row { margin-bottom: 14px; }
+    .funnel-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      margin-bottom: 5px;
+      color: #94a3b8;
+    }
+    .funnel-label .val { color: #e2e8f0; font-weight: 600; }
+    .funnel-label .pct { color: #64748b; font-size: 0.72rem; }
+    .funnel-track {
+      background: #1a2236;
+      border-radius: 5px;
+      height: 26px;
+      overflow: hidden;
+    }
+    .funnel-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+      min-width: 0;
+    }
+    .window-btn {
+      padding: 5px 14px;
+      border-radius: 7px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      background: transparent;
+      color: #64748b;
+    }
+    .window-btn:hover { color: #cbd5e1; }
+    .window-btn.active {
+      background: #1d4ed8;
+      color: #fff;
+    }
+    .tbl-row { border-bottom: 1px solid #1a2236; }
+    .tbl-row:last-child { border-bottom: none; }
+    .tbl-row:hover { background: rgba(255,255,255,0.02); }
+    .signal-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      margin: 2px;
+      white-space: nowrap;
+    }
+    .score-bar {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 1px;
+      margin-right: 1px;
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0f1623; }
+    ::-webkit-scrollbar-thumb { background: #1e2940; border-radius: 99px; }
+    .empty-state { padding: 40px; text-align: center; color: #475569; font-size: 0.85rem; }
+    .stat-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #475569; margin-bottom: 6px; }
+    .stat-num { font-size: 2.25rem; font-weight: 800; line-height: 1; }
+    .stat-sub { font-size: 0.78rem; margin-top: 6px; color: #64748b; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header style="background:#0a1020; border-bottom:1px solid #1e2940; position:sticky; top:0; z-index:50;">
+    <div style="max-width:1280px; margin:0 auto; padding:0 24px; height:60px; display:flex; align-items:center; justify-content:space-between;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:1.1rem; font-weight:800; letter-spacing:-0.02em;">ERP Signal Monitor</span>
+        <span class="badge" id="status-badge" style="background:rgba(16,185,129,0.1); color:#34d399;">
+          <span class="dot-pulse" id="status-dot" style="background:#34d399;"></span>
+          <span id="status-text">Live</span>
+        </span>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; gap:3px; background:#0f1623; border:1px solid #1e2940; border-radius:9px; padding:4px;">
+          <button class="window-btn active" data-w="24h" onclick="setWindow('24h')">24h</button>
+          <button class="window-btn" data-w="7d"  onclick="setWindow('7d')">7d</button>
+          <button class="window-btn" data-w="30d" onclick="setWindow('30d')">30d</button>
+        </div>
+        <span style="font-size:0.75rem; color:#475569;" id="last-updated">—</span>
+      </div>
+    </div>
+  </header>
+
+  <main style="max-width:1280px; margin:0 auto; padding:24px;">
+
+    <!-- KPI Row -->
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px;">
+      <div class="kpi-card kpi-blue">
+        <div class="stat-label">Articles Fetched</div>
+        <div class="stat-num" style="color:#60a5fa;" id="kpi-fetched">—</div>
+        <div class="stat-sub" id="kpi-runs">— runs</div>
+      </div>
+      <div class="kpi-card kpi-sky">
+        <div class="stat-label">New (Unseen)</div>
+        <div class="stat-num" style="color:#38bdf8;" id="kpi-new">—</div>
+        <div class="stat-sub" id="kpi-new-rate">— new rate</div>
+      </div>
+      <div class="kpi-card kpi-violet">
+        <div class="stat-label">Enriched</div>
+        <div class="stat-num" style="color:#a78bfa;" id="kpi-enriched">—</div>
+        <div class="stat-sub" id="kpi-enriched-rate">— of classified</div>
+      </div>
+      <div class="kpi-card kpi-green">
+        <div class="stat-label">Routed to Discord</div>
+        <div class="stat-num" style="color:#34d399;" id="kpi-routed">—</div>
+        <div class="stat-sub" id="kpi-routing-rate">— hit rate</div>
+      </div>
+    </div>
+
+    <!-- Funnel + Signals -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;">
+
+      <div class="card" style="padding:24px;">
+        <div style="font-weight:700; font-size:0.875rem; margin-bottom:20px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Pipeline Funnel</div>
+        <div id="funnel-container"></div>
+        <div style="margin-top:16px; padding-top:16px; border-top:1px solid #1a2236; display:flex; justify-content:space-between; font-size:0.75rem; color:#475569;">
+          <span>Avg run: <span id="avg-duration" style="color:#64748b;">—</span></span>
+          <span>Avg classification rate: <span id="class-rate" style="color:#64748b;">—</span></span>
+        </div>
+      </div>
+
+      <div class="card" style="padding:24px;">
+        <div style="font-weight:700; font-size:0.875rem; margin-bottom:20px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Signal Distribution</div>
+        <div style="display:flex; align-items:center; justify-content:center; height:180px;">
+          <canvas id="signal-chart"></canvas>
+        </div>
+        <div style="margin-top:12px;" id="signal-legend"></div>
+      </div>
+
+    </div>
+
+    <!-- Activity Chart -->
+    <div class="card" style="padding:24px; margin-bottom:20px;">
+      <div style="font-weight:700; font-size:0.875rem; margin-bottom:16px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Hourly Activity (Last 24h)</div>
+      <div style="height:150px;">
+        <canvas id="activity-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Feed Performance + Recent Routed side-by-side on wide screens -->
+    <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:14px; margin-bottom:20px;">
+
+      <div class="card" style="padding:24px;">
+        <div style="font-weight:700; font-size:0.875rem; margin-bottom:16px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Feed Performance</div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+            <thead>
+              <tr style="color:#475569; border-bottom:1px solid #1a2236;">
+                <th style="text-align:left; padding-bottom:10px; font-weight:600;">Feed</th>
+                <th style="text-align:right; padding-bottom:10px; font-weight:600;">Classified</th>
+                <th style="text-align:right; padding-bottom:10px; font-weight:600;">Signals</th>
+                <th style="text-align:right; padding-bottom:10px; font-weight:600;">Routed</th>
+                <th style="text-align:right; padding-bottom:10px; font-weight:600;">Hit%</th>
+              </tr>
+            </thead>
+            <tbody id="feed-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="padding:24px;">
+        <div style="font-weight:700; font-size:0.875rem; margin-bottom:16px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Recent Routed</div>
+        <div id="routed-list"></div>
+      </div>
+
+    </div>
+
+    <!-- Recent Runs -->
+    <div class="card" style="padding:24px; margin-bottom:20px;">
+      <div style="font-weight:700; font-size:0.875rem; margin-bottom:16px; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em;">Recent Pipeline Runs</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+          <thead>
+            <tr style="color:#475569; border-bottom:1px solid #1a2236;">
+              <th style="text-align:left; padding-bottom:10px; font-weight:600;">Time</th>
+              <th style="text-align:right; padding-bottom:10px; font-weight:600;">Fetched</th>
+              <th style="text-align:right; padding-bottom:10px; font-weight:600;">New</th>
+              <th style="text-align:right; padding-bottom:10px; font-weight:600;">Classified</th>
+              <th style="text-align:right; padding-bottom:10px; font-weight:600;">Enriched</th>
+              <th style="text-align:right; padding-bottom:10px; font-weight:600;">Routed</th>
+              <th style="text-align:right; padding-bottom:10px; font-weight:600;">Duration</th>
+            </tr>
+          </thead>
+          <tbody id="runs-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let win = '24h';
+let signalChart = null;
+let activityChart = null;
+let tickTimer = null;
+let secondsAgo = 0;
+
+const SIGNAL_COLORS = [
+  '#6366f1','#3b82f6','#0ea5e9','#10b981',
+  '#f59e0b','#ef4444','#ec4899','#8b5cf6'
+];
+
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#1a2236';
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function fmt(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString();
+}
+
+function fmtPct(n) {
+  if (n == null) return '—';
+  return n + '%';
+}
+
+function fmtDur(s) {
+  if (!s) return '—';
+  if (s < 60) return s.toFixed(1) + 's';
+  return Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's';
+}
+
+function fmtAge(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  const diff = (Date.now() - d) / 1000;
+  if (diff < 60)   return Math.round(diff) + 's ago';
+  if (diff < 3600) return Math.round(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.round(diff / 3600) + 'h ago';
+  return d.toLocaleDateString();
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+    ' · ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function scoreColor(n) {
+  if (n >= 9) return '#34d399';
+  if (n >= 7) return '#60a5fa';
+  return '#f59e0b';
+}
+
+// ─── Window selector ─────────────────────────────────────────────────────────
+function setWindow(w) {
+  win = w;
+  document.querySelectorAll('.window-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.w === w)
+  );
+  refresh();
+}
+
+// ─── Funnel ──────────────────────────────────────────────────────────────────
+function renderFunnel(stats) {
+  const stages = [
+    { label: 'Fetched',     val: stats.articles_fetched,    color: '#1d4ed8' },
+    { label: 'New (unseen)',val: stats.articles_new,         color: '#0369a1' },
+    { label: 'Classified',  val: stats.articles_classified,  color: '#7c3aed' },
+    { label: 'Enriched',    val: stats.articles_enriched,    color: '#5b21b6' },
+    { label: 'Routed',      val: stats.articles_routed,      color: '#059669' },
+  ];
+  const max = stages[0].val || 1;
+  document.getElementById('funnel-container').innerHTML = stages.map((s, i) => {
+    const pct = Math.max(4, Math.round((s.val / max) * 100));
+    const dropPct = i > 0 && stages[i-1].val > 0
+      ? '(' + (s.val / stages[i-1].val * 100).toFixed(0) + '% of prev)'
+      : '';
+    return `
+      <div class="funnel-row">
+        <div class="funnel-label">
+          <span>${s.label}</span>
+          <span><span class="val">${fmt(s.val)}</span> <span class="pct">${dropPct}</span></span>
+        </div>
+        <div class="funnel-track">
+          <div class="funnel-fill" style="width:${pct}%; background:${s.color};">${s.val > 0 ? '' : ''}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('avg-duration').textContent = fmtDur(stats.avg_duration_seconds);
+  document.getElementById('class-rate').textContent = fmtPct(stats.classification_rate);
+}
+
+// ─── Signal donut ─────────────────────────────────────────────────────────────
+function renderSignalChart(signals) {
+  const el = document.getElementById('signal-chart');
+  const leg = document.getElementById('signal-legend');
+
+  if (!signals.length) {
+    leg.innerHTML = '<div class="empty-state">No signals in this window</div>';
+    if (signalChart) { signalChart.destroy(); signalChart = null; }
+    return;
+  }
+
+  const labels = signals.map(s => s.signal);
+  const data   = signals.map(s => s.count);
+  const colors = signals.map((_, i) => SIGNAL_COLORS[i % SIGNAL_COLORS.length]);
+  const total  = data.reduce((a, b) => a + b, 0);
+
+  if (signalChart) signalChart.destroy();
+  signalChart = new Chart(el.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0, hoverOffset: 8 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '70%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: c => ` ${c.label}: ${c.raw} (${Math.round(c.raw/total*100)}%)` }
+        }
+      }
+    }
+  });
+
+  leg.innerHTML = signals.map((s, i) => `
+    <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.76rem; padding:3px 0;">
+      <div style="display:flex; align-items:center; gap:7px;">
+        <div style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></div>
+        <span style="color:#94a3b8;">${s.signal}</span>
+      </div>
+      <span style="color:#64748b;">${s.count}<span style="color:#334155; margin-left:4px;">(${Math.round(s.count/total*100)}%)</span></span>
+    </div>
+  `).join('');
+}
+
+// ─── Activity chart ───────────────────────────────────────────────────────────
+function renderActivityChart(activity) {
+  const el = document.getElementById('activity-chart');
+  if (activityChart) activityChart.destroy();
+
+  const labels  = activity.map(a => {
+    const d = new Date(a.hour + ':00Z');
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  });
+  const fetched = activity.map(a => a.fetched || 0);
+  const routed  = activity.map(a => a.routed || 0);
+
+  activityChart = new Chart(el.getContext('2d'), {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Fetched',
+          data: fetched,
+          backgroundColor: 'rgba(59,130,246,0.2)',
+          borderColor: '#3b82f6',
+          borderWidth: 1,
+          borderRadius: 3,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: 'Routed',
+          data: routed,
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16,185,129,0.1)',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#10b981',
+          tension: 0.4,
+          fill: true,
+          yAxisID: 'y1',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: { usePointStyle: true, boxWidth: 8, padding: 16, font: { size: 11 } }
+        }
+      },
+      scales: {
+        x: { ticks: { maxRotation: 0, maxTicksLimit: 8, font: { size: 11 } }, grid: { color: '#1a2236' } },
+        y:  { position: 'left',  ticks: { font: { size: 11 } }, grid: { color: '#1a2236' } },
+        y1: { position: 'right', ticks: { color: '#10b981', font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ─── Feed table ───────────────────────────────────────────────────────────────
+function renderFeeds(feeds) {
+  const tbody = document.getElementById('feed-tbody');
+  if (!feeds.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state">No data yet</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = feeds.map(f => {
+    const hrColor = f.hit_rate > 5 ? '#34d399' : f.hit_rate > 0 ? '#60a5fa' : '#334155';
+    return `
+    <tr class="tbl-row">
+      <td style="padding:9px 0; color:#cbd5e1; font-size:0.78rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${f.feed_name}</td>
+      <td style="padding:9px 0; text-align:right; color:#64748b;">${fmt(f.classified)}</td>
+      <td style="padding:9px 0; text-align:right; color:#38bdf8;">${fmt(f.with_signal)}</td>
+      <td style="padding:9px 0; text-align:right; color:#34d399;">${fmt(f.routed)}</td>
+      <td style="padding:9px 0; text-align:right; font-weight:700; color:${hrColor};">${f.hit_rate}%</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Routed list ──────────────────────────────────────────────────────────────
+function renderRouted(routed) {
+  const el = document.getElementById('routed-list');
+  if (!routed.length) {
+    el.innerHTML = '<div class="empty-state">No companies routed in this window</div>';
+    return;
+  }
+  el.innerHTML = routed.map(r => `
+    <div style="padding:10px 0; border-bottom:1px solid #1a2236;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+        <span style="font-weight:700; font-size:0.83rem; color:#e2e8f0;">${r.company_name || '—'}</span>
+        <span style="font-size:0.7rem; color:#475569;">${fmtAge(r.created_at)}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+        <span style="font-size:0.72rem; font-weight:700; color:${scoreColor(r.erp_likelihood)};">
+          ERP ${r.erp_likelihood}/10
+        </span>
+        ${r.firmographics_score != null ? `<span style="font-size:0.72rem; color:#a78bfa;">Firm ${parseFloat(r.firmographics_score).toFixed(1)}</span>` : ''}
+        ${r.hq_state ? `<span style="font-size:0.72rem; color:#64748b;">${[r.hq_state, r.hq_country].filter(Boolean).join(', ')}</span>` : ''}
+      </div>
+      <div style="display:flex; flex-wrap:wrap;">
+        ${(r.erp_signals || []).map(s => `<span class="signal-pill">${s}</span>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── Runs table ───────────────────────────────────────────────────────────────
+function renderRuns(runs) {
+  const tbody = document.getElementById('runs-tbody');
+  if (!runs.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No runs recorded yet — start main.py to begin</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = runs.map(r => {
+    const highlight = r.articles_routed > 0 ? 'background:rgba(16,185,129,0.04);' : '';
+    return `
+    <tr class="tbl-row" style="${highlight}">
+      <td style="padding:8px 0; color:#64748b; font-size:0.75rem; font-family:monospace; white-space:nowrap;">${fmtTime(r.run_at)}</td>
+      <td style="padding:8px 0; text-align:right; color:#94a3b8;">${fmt(r.articles_fetched)}</td>
+      <td style="padding:8px 0; text-align:right; color:#38bdf8;">${fmt(r.articles_new)}</td>
+      <td style="padding:8px 0; text-align:right; color:#a78bfa;">${fmt(r.articles_classified)}</td>
+      <td style="padding:8px 0; text-align:right; color:#818cf8;">${fmt(r.articles_enriched)}</td>
+      <td style="padding:8px 0; text-align:right; font-weight:700; color:${r.articles_routed > 0 ? '#34d399' : '#334155'};">${fmt(r.articles_routed)}</td>
+      <td style="padding:8px 0; text-align:right; color:#475569; font-size:0.75rem;">${fmtDur(r.duration_seconds)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Status indicator ─────────────────────────────────────────────────────────
+function updateStatus(lastRunAt, isError) {
+  const badge = document.getElementById('status-badge');
+  const dot   = document.getElementById('status-dot');
+  const text  = document.getElementById('status-text');
+
+  if (isError) {
+    badge.style.background = 'rgba(239,68,68,0.1)';
+    badge.style.color = '#f87171';
+    dot.style.background = '#f87171';
+    text.textContent = 'Error';
+    dot.style.animation = 'none';
+    return;
+  }
+
+  if (!lastRunAt) {
+    badge.style.background = 'rgba(100,116,139,0.1)';
+    badge.style.color = '#94a3b8';
+    dot.style.background = '#94a3b8';
+    text.textContent = 'No data';
+    return;
+  }
+
+  const diffMin = (Date.now() - new Date(lastRunAt.endsWith('Z') ? lastRunAt : lastRunAt + 'Z')) / 60000;
+  if (diffMin <= 15) {
+    badge.style.background = 'rgba(16,185,129,0.1)';
+    badge.style.color = '#34d399';
+    dot.style.background = '#34d399';
+    text.textContent = 'Live';
+    dot.style.animation = 'pulse-anim 2s ease-in-out infinite';
+  } else {
+    badge.style.background = 'rgba(245,158,11,0.1)';
+    badge.style.color = '#fbbf24';
+    dot.style.background = '#fbbf24';
+    text.textContent = 'Stale';
+    dot.style.animation = 'none';
+  }
+}
+
+// ─── Main refresh ─────────────────────────────────────────────────────────────
+async function refresh() {
+  let isError = false;
+  try {
+    const [stats, runs, feeds, signals, activity, routed] = await Promise.all([
+      fetch(`/api/stats?window=${win}`).then(r => r.json()),
+      fetch('/api/runs?limit=25').then(r => r.json()),
+      fetch(`/api/feeds?window=${win}`).then(r => r.json()),
+      fetch(`/api/signals?window=${win}`).then(r => r.json()),
+      fetch('/api/activity').then(r => r.json()),
+      fetch(`/api/routed?window=${win}&limit=10`).then(r => r.json()),
+    ]);
+
+    // KPI cards
+    document.getElementById('kpi-fetched').textContent       = fmt(stats.articles_fetched);
+    document.getElementById('kpi-runs').textContent          = stats.run_count + ' run' + (stats.run_count !== 1 ? 's' : '');
+    document.getElementById('kpi-new').textContent           = fmt(stats.articles_new);
+    document.getElementById('kpi-new-rate').textContent      = fmtPct(stats.new_rate) + ' new rate';
+    document.getElementById('kpi-enriched').textContent      = fmt(stats.articles_enriched);
+    document.getElementById('kpi-enriched-rate').textContent = fmtPct(stats.enrichment_rate) + ' of classified';
+    document.getElementById('kpi-routed').textContent        = fmt(stats.articles_routed);
+    document.getElementById('kpi-routing-rate').textContent  = fmtPct(stats.routing_rate) + ' of fetched';
+
+    renderFunnel(stats);
+    renderSignalChart(signals);
+    renderActivityChart(activity);
+    renderFeeds(feeds);
+    renderRouted(routed);
+    renderRuns(runs);
+    updateStatus(stats.last_run_at, false);
+
+  } catch (e) {
+    console.error(e);
+    isError = true;
+    updateStatus(null, true);
+  }
+
+  // Tick counter
+  if (tickTimer) clearInterval(tickTimer);
+  secondsAgo = 0;
+  tickTimer = setInterval(() => {
+    secondsAgo++;
+    document.getElementById('last-updated').textContent = 'Updated ' + secondsAgo + 's ago';
+  }, 1000);
+  if (!isError) document.getElementById('last-updated').textContent = 'Updated just now';
+}
+
+// Boot
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>

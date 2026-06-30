@@ -21,8 +21,8 @@ from dotenv import load_dotenv
 
 from classifier import classify_article
 from config import POLL_INTERVAL_MINUTES
-from db import init_db, is_seen, mark_seen
-from enricher import enrich_company, apply_enrichment
+from db import finish_run, init_db, is_seen, mark_seen, record_article_event, start_run
+from enricher import apply_enrichment, enrich_company
 from notifier import send_discord_notification
 from scraper import fetch_new_articles
 
@@ -42,10 +42,14 @@ logger = logging.getLogger(__name__)
 
 def run_pipeline(dry_run: bool = False):
     logger.info("--- Pipeline run starting ---")
+    t_start = time.time()
+
     articles = fetch_new_articles()
     logger.info(f"Total articles fetched: {len(articles)}")
 
-    new_count = routed_count = 0
+    run_id = start_run()
+    total_fetched = len(articles)
+    new_count = classified_count = enriched_count = routed_count = 0
 
     for article in articles:
         if is_seen(article["id"]):
@@ -59,6 +63,7 @@ def run_pipeline(dry_run: bool = False):
         if result is None:
             continue
 
+        classified_count += 1
         company_name = result.get("company_name")
 
         # Only enrich strong signals (7+) to conserve Serper credits
@@ -69,6 +74,7 @@ def run_pipeline(dry_run: bool = False):
             enrichment = enrich_company(company_name)
             if enrichment:
                 result = apply_enrichment(result, enrichment)
+                enriched_count += 1
             else:
                 likelihood = result.get("erp_likelihood") or 0
                 signals = result.get("erp_signals") or []
@@ -77,6 +83,11 @@ def run_pipeline(dry_run: bool = False):
                     result["unverified_geo"] = True
                     result["routing_reason"] = "⚠️ unverified geography/size — ZoomInfo not found"
                     logger.info(f"Fallback route (no ZoomInfo): {company_name} | likelihood={likelihood}/10")
+
+        try:
+            record_article_event(run_id, article, result)
+        except Exception:
+            logger.debug("Failed to record article event", exc_info=True)
 
         if result.get("should_route"):
             routed_count += 1
@@ -89,9 +100,15 @@ def run_pipeline(dry_run: bool = False):
             else:
                 send_discord_notification(article, result)
 
+    duration = time.time() - t_start
+    try:
+        finish_run(run_id, total_fetched, new_count, classified_count, enriched_count, routed_count, duration)
+    except Exception:
+        logger.debug("Failed to finish run record", exc_info=True)
+
     logger.info(
         f"--- Pipeline done: {new_count} new articles processed, "
-        f"{routed_count} routed to Discord ---"
+        f"{routed_count} routed to Discord ({duration:.1f}s) ---"
     )
 
 
