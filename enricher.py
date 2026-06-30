@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from pathlib import Path
 
 import requests
 
@@ -9,27 +8,8 @@ from config import TAM_US_STATES, TAM_CA_PROVINCES
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Company cache — persists across runs so each company is only looked up once
-# ---------------------------------------------------------------------------
-
-_COMPANY_CACHE_FILE = Path(__file__).parent / "company_cache.json"
-
-
-def _load_cache() -> dict:
-    if _COMPANY_CACHE_FILE.exists():
-        try:
-            return json.loads(_COMPANY_CACHE_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {}
-
-
-def _save_cache(cache: dict) -> None:
-    _COMPANY_CACHE_FILE.write_text(json.dumps(cache, indent=2))
-
-
-_company_cache: dict = _load_cache()
+# In-memory L1 cache (within process lifetime)
+_memory_cache: dict = {}
 
 
 # ---------------------------------------------------------------------------
@@ -207,16 +187,31 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
 
 def enrich_company(company_name: str) -> dict | None:
     """
-    Search Google via Serper, extract firmographics with GPT.
-    Results are cached to company_cache.json so each company is only looked up once.
+    Look up company firmographics via Serper + GPT.
+    L1: in-memory cache (process lifetime).
+    L2: Postgres company_cache table (persists across deploys).
     """
     if not company_name:
         return None
 
     cache_key = company_name.strip().lower()
-    if cache_key in _company_cache:
-        logger.info(f"Cache hit for '{company_name}'")
-        return _company_cache[cache_key]
+
+    # L1: in-memory
+    if cache_key in _memory_cache:
+        logger.info(f"Cache hit (memory) for '{company_name}'")
+        return _memory_cache[cache_key]
+
+    # L2: database
+    try:
+        from db import get_cached_company, set_cached_company
+        cached = get_cached_company(cache_key)
+        if cached:
+            _memory_cache[cache_key] = cached
+            logger.info(f"Cache hit (DB) for '{company_name}'")
+            return cached
+    except Exception:
+        logger.debug("DB cache lookup failed", exc_info=True)
+        set_cached_company = None  # type: ignore
 
     snippet = _serper_search(company_name)
     if not snippet:
@@ -234,8 +229,12 @@ def enrich_company(company_name: str) -> dict | None:
     if not result.get("estimated_revenue"):
         result["estimated_revenue"] = "est. $1M-$5M"
 
-    _company_cache[cache_key] = result
-    _save_cache(_company_cache)
+    _memory_cache[cache_key] = result
+    try:
+        from db import set_cached_company as _set
+        _set(cache_key, result)
+    except Exception:
+        logger.debug("DB cache write failed", exc_info=True)
 
     logger.info(
         f"Enriched '{company_name}': "
