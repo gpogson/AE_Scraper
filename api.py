@@ -13,6 +13,12 @@ from fastapi.templating import Jinja2Templates
 load_dotenv()
 
 app = FastAPI(docs_url=None, redoc_url=None)
+
+
+@app.on_event("startup")
+async def startup():
+    from db import init_db
+    init_db()
 security = HTTPBasic()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
