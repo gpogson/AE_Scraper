@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ERP Signal Monitor — Leads</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #080c14;
+      color: #e2e8f0;
+      margin: 0;
+    }
+    .card {
+      background: #0f1623;
+      border: 1px solid #1e2940;
+      border-radius: 14px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .dot-pulse {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      animation: pulse-anim 2s ease-in-out infinite;
+    }
+    @keyframes pulse-anim {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.85); }
+    }
+    .tag-chip {
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #1e2940;
+      background: #0f1623;
+      color: #94a3b8;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .tag-chip:hover { border-color: #334155; color: #cbd5e1; }
+    .tag-chip.active {
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+      color: #fff;
+    }
+    input[type="text"] {
+      background: #0f1623;
+      border: 1px solid #1e2940;
+      border-radius: 9px;
+      color: #e2e8f0;
+      padding: 9px 14px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: #3b82f6; }
+    input[type="text"]::placeholder { color: #475569; }
+    .btn-primary {
+      background: #059669;
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      padding: 9px 18px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary:hover { background: #047857; }
+    .tbl-row { border-bottom: 1px solid #1a2236; }
+    .tbl-row:last-child { border-bottom: none; }
+    .tbl-row:hover { background: rgba(255,255,255,0.02); }
+    .signal-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 0.66rem;
+      font-weight: 600;
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      margin: 1px;
+      white-space: nowrap;
+    }
+    .icon-link {
+      color: #64748b;
+      text-decoration: none;
+      padding: 4px 6px;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .icon-link:hover { color: #60a5fa; background: rgba(59,130,246,0.1); }
+    .page-btn {
+      padding: 6px 12px;
+      border-radius: 7px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #1e2940;
+      background: #0f1623;
+      color: #94a3b8;
+    }
+    .page-btn:hover:not(:disabled) { border-color: #334155; color: #cbd5e1; }
+    .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0f1623; }
+    ::-webkit-scrollbar-thumb { background: #1e2940; border-radius: 99px; }
+    .empty-state { padding: 60px 20px; text-align: center; color: #475569; font-size: 0.85rem; }
+    .company-name { font-weight: 700; font-size: 0.88rem; color: #e2e8f0; }
+    .company-sub { font-size: 0.72rem; color: #64748b; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header style="background:#0a1020; border-bottom:1px solid #1e2940; position:sticky; top:0; z-index:50;">
+    <div style="max-width:1400px; margin:0 auto; padding:0 24px; height:60px; display:flex; align-items:center; justify-content:space-between;">
+      <div style="display:flex; align-items:center; gap:20px;">
+        <span style="font-size:1.1rem; font-weight:800; letter-spacing:-0.02em;">ERP Signal Monitor</span>
+        <nav style="display:flex; gap:4px;">
+          <a href="/" style="padding:6px 14px; border-radius:7px; font-size:0.8rem; font-weight:600; text-decoration:none; background:#1d4ed8; color:#fff;">Leads</a>
+          <a href="/stats" style="padding:6px 14px; border-radius:7px; font-size:0.8rem; font-weight:600; text-decoration:none; color:#64748b;">Stats</a>
+        </nav>
+        <span class="badge" style="background:rgba(16,185,129,0.1); color:#34d399;">
+          <span class="dot-pulse" style="background:#34d399;"></span>
+          <span id="total-count">—</span>
+        </span>
+      </div>
+      <button class="btn-primary" onclick="downloadCsv()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v13m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+        Download CSV
+      </button>
+    </div>
+  </header>
+
+  <main style="max-width:1400px; margin:0 auto; padding:24px;">
+
+    <!-- Search + Tags -->
+    <div class="card" style="padding:20px 24px; margin-bottom:16px;">
+      <input type="text" id="search-box" placeholder="Search by company name..." style="width:100%; margin-bottom:16px;" oninput="onSearchInput()" />
+      <div style="display:flex; flex-wrap:wrap; gap:8px;" id="tag-container">
+        <div class="tag-chip active" data-signal="" onclick="setTag('')">All Signals</div>
+      </div>
+    </div>
+
+    <!-- Leads Table -->
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+          <thead>
+            <tr style="color:#475569; border-bottom:1px solid #1a2236; background:#0a1020;">
+              <th style="text-align:left; padding:12px 20px; font-weight:600;">Company</th>
+              <th style="text-align:left; padding:12px; font-weight:600;">Signals</th>
+              <th style="text-align:right; padding:12px; font-weight:600;">ERP</th>
+              <th style="text-align:right; padding:12px; font-weight:600;">Firm</th>
+              <th style="text-align:left; padding:12px; font-weight:600;">Location</th>
+              <th style="text-align:left; padding:12px; font-weight:600;">Revenue</th>
+              <th style="text-align:left; padding:12px; font-weight:600;">Employees</th>
+              <th style="text-align:left; padding:12px; font-weight:600;">Date</th>
+              <th style="text-align:center; padding:12px 20px; font-weight:600;">Links</th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody">
+            <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-top:1px solid #1a2236;">
+        <span style="font-size:0.78rem; color:#475569;" id="page-info">—</span>
+        <div style="display:flex; gap:8px;">
+          <button class="page-btn" id="prev-btn" onclick="changePage(-1)">← Prev</button>
+          <button class="page-btn" id="next-btn" onclick="changePage(1)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+<script>
+let currentPage = 0;
+const PAGE_SIZE = 50;
+let currentSearch = '';
+let currentSignal = '';
+let searchDebounce = null;
+let totalItems = 0;
+
+function fmt(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString();
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+    d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function scoreColor(n) {
+  if (n >= 9) return '#34d399';
+  if (n >= 7) return '#60a5fa';
+  return '#f59e0b';
+}
+
+function locationStr(r) {
+  return [r.hq_state, r.hq_country].filter(Boolean).join(', ') || '—';
+}
+
+async function loadTags() {
+  const tags = await fetch('/api/signal-tags').then(r => r.json());
+  const container = document.getElementById('tag-container');
+  tags.forEach(tag => {
+    const chip = document.createElement('div');
+    chip.className = 'tag-chip';
+    chip.dataset.signal = tag;
+    chip.textContent = tag;
+    chip.onclick = () => setTag(tag);
+    container.appendChild(chip);
+  });
+}
+
+function setTag(signal) {
+  currentSignal = signal;
+  document.querySelectorAll('.tag-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.signal === signal);
+  });
+  currentPage = 0;
+  loadLeads();
+}
+
+function onSearchInput() {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    currentSearch = document.getElementById('search-box').value.trim();
+    currentPage = 0;
+    loadLeads();
+  }, 350);
+}
+
+function buildQuery(extra) {
+  const params = new URLSearchParams({
+    search: currentSearch,
+    signal: currentSignal,
+    window: 'all',
+    ...extra,
+  });
+  return params.toString();
+}
+
+function renderLeads(items) {
+  const tbody = document.getElementById('leads-tbody');
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state">No leads found${currentSearch || currentSignal ? ' matching your filters' : ' yet — check back after the next pipeline run'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(r => `
+    <tr class="tbl-row">
+      <td style="padding:14px 20px;">
+        <div class="company-name">${r.company_name || 'Unknown'}</div>
+        <div class="company-sub">${r.industry || r.feed_name || ''}</div>
+      </td>
+      <td style="padding:14px 12px; max-width:220px;">
+        ${(r.erp_signals || []).map(s => `<span class="signal-pill">${s}</span>`).join('')}
+      </td>
+      <td style="padding:14px 12px; text-align:right; font-weight:700; color:${scoreColor(r.erp_likelihood)};">${r.erp_likelihood ?? '—'}/10</td>
+      <td style="padding:14px 12px; text-align:right; color:#a78bfa;">${r.firmographics_score != null ? parseFloat(r.firmographics_score).toFixed(1) : '—'}</td>
+      <td style="padding:14px 12px; color:#94a3b8; white-space:nowrap;">${locationStr(r)}</td>
+      <td style="padding:14px 12px; color:#94a3b8; white-space:nowrap;">${r.estimated_revenue || '—'}</td>
+      <td style="padding:14px 12px; color:#94a3b8; white-space:nowrap;">${r.employee_count || '—'}</td>
+      <td style="padding:14px 12px; color:#64748b; font-size:0.75rem; white-space:nowrap;">${fmtDate(r.created_at)}</td>
+      <td style="padding:14px 20px; text-align:center; white-space:nowrap;">
+        ${r.article_url ? `<a class="icon-link" href="${r.article_url}" target="_blank" title="Article">📰</a>` : ''}
+        ${r.website ? `<a class="icon-link" href="${r.website}" target="_blank" title="Website">🔗</a>` : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function updatePagination() {
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  document.getElementById('page-info').textContent =
+    totalItems === 0 ? 'No results' : `Showing ${currentPage * PAGE_SIZE + 1}–${Math.min((currentPage + 1) * PAGE_SIZE, totalItems)} of ${totalItems}`;
+  document.getElementById('prev-btn').disabled = currentPage === 0;
+  document.getElementById('next-btn').disabled = (currentPage + 1) * PAGE_SIZE >= totalItems;
+  document.getElementById('total-count').textContent = `${fmt(totalItems)} leads`;
+}
+
+function changePage(delta) {
+  currentPage = Math.max(0, currentPage + delta);
+  loadLeads();
+}
+
+async function loadLeads() {
+  try {
+    const query = buildQuery({ limit: PAGE_SIZE, offset: currentPage * PAGE_SIZE });
+    const data = await fetch(`/api/leads?${query}`).then(r => r.json());
+    totalItems = data.total;
+    renderLeads(data.items);
+    updatePagination();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('leads-tbody').innerHTML =
+      `<tr><td colspan="9" class="empty-state">Failed to load leads</td></tr>`;
+  }
+}
+
+function downloadCsv() {
+  const query = buildQuery({});
+  window.location.href = `/api/leads/export.csv?${query}`;
+}
+
+loadTags();
+loadLeads();
+</script>
+</body>
+</html>

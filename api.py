@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import secrets
@@ -8,9 +10,11 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
+
+from config import ERP_SIGNALS
 
 load_dotenv()
 
@@ -60,8 +64,131 @@ async def startup():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, _: None = Depends(check_auth)):
+async def leads_page(request: Request, _: None = Depends(check_auth)):
+    return templates.TemplateResponse(request, "leads.html")
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def stats_page(request: Request, _: None = Depends(check_auth)):
     return templates.TemplateResponse(request, "dashboard.html")
+
+
+@app.get("/api/signal-tags")
+async def get_signal_tags(_: None = Depends(check_auth)):
+    return ERP_SIGNALS
+
+
+def _lead_filters(search: str, signal: str, window: str) -> tuple[str, list]:
+    conditions = ["should_route = 1"]
+    params: list = []
+
+    if window != "all":
+        conditions.append(f"created_at >= {_wc(window)}")
+    if search:
+        conditions.append("company_name ILIKE %s")
+        params.append(f"%{search}%")
+    if signal:
+        conditions.append("erp_signals LIKE %s")
+        params.append(f'%"{signal}"%')
+
+    return " AND ".join(conditions), params
+
+
+@app.get("/api/leads")
+async def get_leads(
+    search: str = "",
+    signal: str = "",
+    window: str = "all",
+    limit: int = 50,
+    offset: int = 0,
+    _: None = Depends(check_auth),
+):
+    where_clause, params = _lead_filters(search, signal, window)
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"SELECT COUNT(*) AS total FROM article_events WHERE {where_clause}", params)
+            total = cur.fetchone()["total"]
+
+            cur.execute(
+                f"""
+                SELECT company_name, article_url, article_title, website,
+                       erp_likelihood, firmographics_score, erp_signals,
+                       hq_state, hq_country, employee_count, estimated_revenue,
+                       industry, signal_summary, feed_name, created_at
+                FROM article_events
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                params + [limit, offset],
+            )
+            rows = cur.fetchall()
+
+    items = []
+    for r in rows:
+        d = dict(r)
+        d["created_at"] = d["created_at"].isoformat() if d["created_at"] else None
+        try:
+            d["erp_signals"] = json.loads(d["erp_signals"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            d["erp_signals"] = []
+        items.append(d)
+
+    return {"total": total, "items": items}
+
+
+@app.get("/api/leads/export.csv")
+async def export_leads_csv(
+    search: str = "",
+    signal: str = "",
+    window: str = "all",
+    _: None = Depends(check_auth),
+):
+    where_clause, params = _lead_filters(search, signal, window)
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT company_name, COALESCE(website, article_url) AS company_url,
+                       article_url, erp_likelihood, firmographics_score, erp_signals,
+                       hq_state, hq_country, employee_count, estimated_revenue,
+                       industry, created_at
+                FROM article_events
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                """,
+                params,
+            )
+            rows = cur.fetchall()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Company Name", "Company URL", "Article URL", "ERP Likelihood",
+        "Firmographics Score", "Signals", "State", "Country",
+        "Employees", "Revenue", "Industry", "Date",
+    ])
+    for r in rows:
+        try:
+            signals = ", ".join(json.loads(r["erp_signals"] or "[]"))
+        except (json.JSONDecodeError, TypeError):
+            signals = ""
+        writer.writerow([
+            r["company_name"], r["company_url"], r["article_url"],
+            r["erp_likelihood"], r["firmographics_score"], signals,
+            r["hq_state"], r["hq_country"], r["employee_count"],
+            r["estimated_revenue"], r["industry"],
+            r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+        ])
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=erp_leads.csv"},
+    )
 
 
 @app.get("/api/stats")

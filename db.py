@@ -63,6 +63,14 @@ def init_db():
                     created_at TIMESTAMP DEFAULT NOW()
                 )
             """)
+            # Backfill columns for the leads page (added after initial launch)
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS article_url TEXT")
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS article_title TEXT")
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS website TEXT")
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS employee_count TEXT")
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS estimated_revenue TEXT")
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS industry TEXT")
+            cur.execute("ALTER TABLE article_events ADD COLUMN IF NOT EXISTS signal_summary TEXT")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS company_cache (
                     company_key TEXT PRIMARY KEY,
@@ -134,8 +142,10 @@ def record_article_event(run_id: int, article: dict, result: dict):
                     article_id, run_id, feed_name, company_name,
                     erp_likelihood, erp_signals, in_tam_geography,
                     firmographics_score, should_route, exclusion_reason,
-                    hq_state, hq_country
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    hq_state, hq_country, article_url, article_title,
+                    website, employee_count, estimated_revenue, industry,
+                    signal_summary
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (article_id) DO NOTHING
                 """,
                 (
@@ -151,6 +161,13 @@ def record_article_event(run_id: int, article: dict, result: dict):
                     result.get("exclusion_reason"),
                     hq_state,
                     hq_country,
+                    article.get("url"),
+                    article.get("title"),
+                    enrichment.get("website"),
+                    enrichment.get("employee_count"),
+                    enrichment.get("estimated_revenue") or result.get("revenue_estimate"),
+                    result.get("sub_industry") or enrichment.get("industry"),
+                    result.get("signal_summary"),
                 ),
             )
 
