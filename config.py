@@ -25,26 +25,26 @@ RSS_FEEDS = [
         "url": "https://feed.businesswire.com/rss/home/?rss=G1",
     },
 
-    # --- GlobeNewswire by industry category ---
-    {
-        "name": "GlobeNewswire-Technology",
-        "url": "https://www.globenewswire.com/RssFeed/subjectcode/23-Technology",
-    },
-    {
-        "name": "GlobeNewswire-Business",
-        "url": "https://www.globenewswire.com/RssFeed/subjectcode/22-Business",
-    },
+    # --- GlobeNewswire via Google News (direct RSS returns 403) ---
     {
         "name": "GlobeNewswire-Manufacturing",
-        "url": "https://www.globenewswire.com/RssFeed/subjectcode/17-ManufacturingTransportation",
+        "url": "https://news.google.com/rss/search?q=site:globenewswire.com+manufacturer+OR+manufacturing+when:1d&hl=en-US&gl=US&ceid=US:en",
     },
     {
         "name": "GlobeNewswire-Retail",
-        "url": "https://www.globenewswire.com/RssFeed/subjectcode/18-RetailConsumer",
+        "url": "https://news.google.com/rss/search?q=site:globenewswire.com+retailer+OR+%22consumer+brand%22+OR+%22consumer+products%22+when:1d&hl=en-US&gl=US&ceid=US:en",
     },
     {
         "name": "GlobeNewswire-Agriculture",
-        "url": "https://www.globenewswire.com/RssFeed/subjectcode/19-AgricultureFoodBeverage",
+        "url": "https://news.google.com/rss/search?q=site:globenewswire.com+agriculture+OR+%22food+and+beverage%22+OR+brewery+OR+winery+when:1d&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GlobeNewswire-Distribution",
+        "url": "https://news.google.com/rss/search?q=site:globenewswire.com+distributor+OR+%22wholesale+distribution%22+when:1d&hl=en-US&gl=US&ceid=US:en",
+    },
+    {
+        "name": "GlobeNewswire-Business",
+        "url": "https://news.google.com/rss/search?q=site:globenewswire.com+acquisition+OR+expansion+OR+appoints+OR+funding+when:1d&hl=en-US&gl=US&ceid=US:en",
     },
 
     # --- Google News RSS — ERP signal keywords ---
@@ -91,16 +91,12 @@ RSS_FEEDS = [
         "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+Washington+OR+Oregon+OR+Idaho&hl=en-US&gl=US&ceid=US:en",
     },
     {
-        "name": "GoogleNews-Mountain-West",
-        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+Colorado+OR+Utah+OR+Nevada+OR+Wyoming&hl=en-US&gl=US&ceid=US:en",
+        "name": "GoogleNews-Utah-Nevada",
+        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+Utah+OR+Nevada&hl=en-US&gl=US&ceid=US:en",
     },
     {
-        "name": "GoogleNews-Southwest",
-        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+Arizona+OR+%22New+Mexico%22+OR+Oklahoma&hl=en-US&gl=US&ceid=US:en",
-    },
-    {
-        "name": "GoogleNews-Plains",
-        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+Montana+OR+%22North+Dakota%22+OR+%22South+Dakota%22+OR+Nebraska+OR+Kansas+OR+Minnesota&hl=en-US&gl=US&ceid=US:en",
+        "name": "GoogleNews-Alaska-Hawaii",
+        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+Alaska+OR+Hawaii&hl=en-US&gl=US&ceid=US:en",
     },
     {
         "name": "GoogleNews-California",
@@ -108,7 +104,7 @@ RSS_FEEDS = [
     },
     {
         "name": "GoogleNews-Canada-West",
-        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+%22British+Columbia%22+OR+Alberta+OR+Saskatchewan&hl=en-US&gl=CA&ceid=CA:en",
+        "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+%22British+Columbia%22+OR+Manitoba+OR+Yukon+OR+%22Northwest+Territories%22+OR+Nunavut&hl=en-US&gl=CA&ceid=CA:en",
     },
 
     # --- Yahoo Finance RSS — SMB news, acquisitions, funding ---
@@ -147,17 +143,7 @@ RSS_FEEDS = [
         "url": "https://labusinessjournal.com/feed/",
     },
 
-    # --- Hiring signals (CFO/Controller = ERP evaluation incoming) ---
-    {
-        "name": "RemoteOK-Finance",
-        "url": "https://remoteok.com/remote-finance-jobs.rss",
-    },
-
     # --- Manufacturing trade publications ---
-    {
-        "name": "IndustryWeek",
-        "url": "https://www.industryweek.com/rss/all",
-    },
     {
         "name": "ManufacturingDive",
         "url": "https://www.manufacturingdive.com/feeds/news/",
@@ -317,8 +303,9 @@ RSS_FEEDS = [
 # How often to poll feeds (minutes)
 POLL_INTERVAL_MINUTES = 10
 
-# Only process articles published within this window (set to ~2x poll interval for safety)
-MAX_ARTICLE_AGE_MINUTES = 20
+# Only process articles published within this window. Google News sorts by relevance, not
+# recency, so this must be wide; is_seen() dedup prevents reprocessing across runs.
+MAX_ARTICLE_AGE_MINUTES = 1440
 
 # Max entries to check per feed per run (cost control)
 MAX_ENTRIES_PER_FEED = 20

@@ -8,6 +8,7 @@ import feedparser
 import requests
 
 from config import RSS_FEEDS, MAX_ENTRIES_PER_FEED, MAX_ARTICLE_AGE_MINUTES
+from db import is_seen
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ERPSignalBot/1.0)"}
 
@@ -54,7 +55,7 @@ def fetch_new_articles() -> list[dict]:
     """Fetch entries from all configured RSS feeds published within MAX_ARTICLE_AGE_MINUTES."""
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=MAX_ARTICLE_AGE_MINUTES)
     articles = []
-    skipped_old = 0
+    skipped_old = skipped_seen = 0
 
     for feed_cfg in RSS_FEEDS:
         try:
@@ -73,6 +74,11 @@ def fetch_new_articles() -> list[dict]:
                 pub_dt = _parse_published(entry)
                 if pub_dt is not None and pub_dt < cutoff:
                     skipped_old += 1
+                    continue
+
+                # Skip already-processed articles before the expensive full-text download
+                if is_seen(_article_id(url)):
+                    skipped_seen += 1
                     continue
 
                 content_raw = (
@@ -106,5 +112,7 @@ def fetch_new_articles() -> list[dict]:
 
     if skipped_old:
         logger.info(f"Skipped {skipped_old} articles older than {MAX_ARTICLE_AGE_MINUTES} minutes")
+    if skipped_seen:
+        logger.info(f"Skipped {skipped_seen} already-processed articles")
 
     return articles
