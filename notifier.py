@@ -34,6 +34,16 @@ def _score_bar(score: float) -> str:
     return "█" * filled + "░" * (10 - filled)
 
 
+def _safe_url(url) -> str | None:
+    """Discord rejects the whole embed if a URL lacks an http(s) scheme or has spaces."""
+    url = str(url or "").strip()
+    if not url or url.lower() in ("null", "none", "unknown", "n/a") or " " in url:
+        return None
+    if not url.lower().startswith(("http://", "https://")):
+        url = "https://" + url.lstrip("/")
+    return url
+
+
 def _location_str(location: dict) -> str:
     parts = [location.get("city"), location.get("state_or_province"), location.get("country")]
     return ", ".join(p for p in parts if p) or "Unknown"
@@ -61,7 +71,8 @@ def send_discord_notification(article: dict, classification: dict):
     website          = enrichment.get("website")
     enriched         = bool(enrichment)
 
-    company_url    = website or article["url"]
+    article_url    = _safe_url(article.get("url"))
+    company_url    = _safe_url(website) or article_url
     industry_value = sub_industry or enrichment.get("industry") or "—"
 
     score_line = (
@@ -70,7 +81,7 @@ def send_discord_notification(article: dict, classification: dict):
     )
 
     fields = [
-        {"name": "\U0001f4f0 Article", "value": f"[Read Article]({article['url']})", "inline": False},
+        {"name": "\U0001f4f0 Article", "value": f"[Read Article]({article_url})" if article_url else "—", "inline": False},
         {"name": "\U0001f4ca Score",   "value": score_line, "inline": False},
         {"name": "\U0001f4cd Location",     "value": _location_str(location) + (" \U0001f50d" if enriched else ""), "inline": True},
         {"name": "\U0001f4b0 Revenue Est.", "value": revenue + (" \U0001f50d" if enriched else ""), "inline": True},
@@ -100,20 +111,28 @@ def send_discord_notification(article: dict, classification: dict):
         "inline": False,
     })
 
+    # Discord rejects empty or over-length field values (1024 chars max)
+    for field in fields:
+        field["value"] = (str(field["value"]).strip() or "—")[:1024]
+
     embed = {
-        "title": f"\U0001f3af {company}",
-        "url": company_url,
+        "title": f"\U0001f3af {company}"[:256],
         "color": _embed_color(signals),
         "fields": fields,
-        "footer": {"text": f"Source: {article['source']}  •  {article.get('published', '')}"},
+        "footer": {"text": f"Source: {article['source']}  •  {article.get('published', '')}"[:2048]},
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    if company_url:
+        embed["url"] = company_url
 
     try:
         resp = requests.post(webhook_url, json={"username": "ERP Signal Bot", "embeds": [embed]}, timeout=10)
         resp.raise_for_status()
         logger.info(f"Discord notified: {company}")
     except requests.HTTPError as e:
-        logger.error(f"Discord HTTP error {e.response.status_code}: {e.response.text}")
+        logger.error(
+            f"Discord HTTP error {e.response.status_code}: {e.response.text} "
+            f"| company={company!r} url={company_url!r}"
+        )
     except Exception:
         logger.exception("Discord notification failed")

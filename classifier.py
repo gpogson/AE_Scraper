@@ -52,7 +52,8 @@ def classify_article(article: dict) -> dict | None:
 
         logger.info(
             f"Classified '{article['title'][:55]}...' "
-            f"→ {company} | likelihood={likelihood}/10 | signals={signals} | {reasoning[:80]}"
+            f"→ {company} | {result.get('industry_vertical')} | likelihood={likelihood}/10 "
+            f"| signals={signals} | {reasoning[:80]}"
         )
 
         return result

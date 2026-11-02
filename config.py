@@ -100,23 +100,11 @@ RSS_FEEDS = [
     },
     {
         "name": "GoogleNews-California",
-        "url": "https://news.google.com/rss/search?q=small+business+expansion+OR+%22new+facility%22+OR+acquisition+California&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=manufacturer+OR+brand+OR+distributor+expansion+OR+%22new+facility%22+OR+acquisition+California&hl=en-US&gl=US&ceid=US:en",
     },
     {
         "name": "GoogleNews-Canada-West",
         "url": "https://news.google.com/rss/search?q=business+expansion+OR+%22new+facility%22+OR+acquisition+%22British+Columbia%22+OR+Manitoba+OR+Yukon+OR+%22Northwest+Territories%22+OR+Nunavut&hl=en-US&gl=CA&ceid=CA:en",
-    },
-
-    # --- Yahoo Finance RSS — SMB news, acquisitions, funding ---
-    {
-        "name": "YahooFinance-SmallCap",
-        "url": "https://finance.yahoo.com/rss/headline?s=^RUT",
-    },
-
-    # --- MarketWatch RSS ---
-    {
-        "name": "MarketWatch-SmallBusiness",
-        "url": "https://feeds.marketwatch.com/marketwatch/realtimeheadlines/",
     },
 
     # --- Funding & startup news ---
@@ -353,7 +341,7 @@ Score calibration:
 ━━━ INDUSTRY VERTICAL ━━━
 Use common sense — does this company's business revolve around physical products?
 - "products" — it makes, grows, distributes, or sells physical goods (manufacturers, food & beverage producers, farms, wholesale distributors, consumer brands, retailers, commercial printers).
-- "services" — it mainly sells services, software, or expertise (SaaS, consulting, agencies, staffing/recruiting, financial, legal, healthcare providers, contractors, logistics).
+- "services" — it mainly sells services, software, or expertise (SaaS, consulting, agencies, staffing/recruiting, financial, legal, healthcare providers, contractors, logistics). Also "services": real estate companies, REITs, landlords, investment/holding companies, and mineral or energy royalty owners — owning assets is not making products.
 Vehicle dealers (auto, boat, RV, motorcycle, ATV) count as "services".
 Judge by what the company IS, not by what the article mentions. If it does both, choose what drives most of its revenue.
 
