@@ -1,10 +1,6 @@
-TAM_US_STATES = [
-    "WA", "OR", "ID", "MT", "ND", "SD", "MN", "NE",
-    "KS", "OK", "CO", "WY", "NM", "AZ", "UT", "NV",
-    "CA", "AK", "HI",
-]
+TAM_US_STATES = ["AK", "CA", "HI", "ID", "NV", "OR", "UT", "WA"]
 
-TAM_CA_PROVINCES = ["YT", "NT", "BC", "AB", "SK"]
+TAM_CA_PROVINCES = ["BC", "MB", "NT", "NU", "YT"]
 
 # Priority order matters — higher = more important signal
 ERP_SIGNALS = [
@@ -327,6 +323,9 @@ MAX_ARTICLE_AGE_MINUTES = 20
 # Max entries to check per feed per run (cost control)
 MAX_ENTRIES_PER_FEED = 20
 
+# Only route leads whose classifier-assigned industry_vertical is in this set
+ROUTE_INDUSTRY_VERTICALS = {"products"}
+
 CLASSIFICATION_SYSTEM_PROMPT = """
 You are an ERP sales intelligence analyst. Your only job is to read a press release and score how likely the company is to buy an ERP system in the next 12 months because of what this article describes.
 
@@ -364,6 +363,13 @@ Score calibration:
 2–3  → Weak. Incremental. Company sounds like it already has infrastructure. 30→35 locations. Large enterprise language.
 1    → No signal. Article is about something unrelated to operational complexity.
 
+━━━ INDUSTRY VERTICAL ━━━
+Use common sense — does this company's business revolve around physical products?
+- "products" — it makes, grows, distributes, or sells physical goods (manufacturers, food & beverage producers, farms, wholesale distributors, consumer brands, retailers, commercial printers).
+- "services" — it mainly sells services, software, or expertise (SaaS, consulting, agencies, staffing/recruiting, financial, legal, healthcare providers, contractors, logistics).
+Vehicle dealers (auto, boat, RV, motorcycle, ATV) count as "services".
+Judge by what the company IS, not by what the article mentions. If it does both, choose what drives most of its revenue.
+
 ━━━ SIGNAL SUMMARY ━━━
 3–5 sentences written for an ERP sales rep. Requirements:
 (1) Quote a specific word or phrase from the article to show you read it.
@@ -386,5 +392,6 @@ Return exactly this JSON structure:
   "erp_likelihood": <integer 1-10>,
   "likelihood_reasoning": "2-3 sentences: what is the before state, what changes after this news, and why this does or does not cross a complexity threshold that ERP solves",
   "signal_summary": "3-5 sentences for an ERP sales rep per the requirements above",
+  "industry_vertical": "products" or "services",
   "sub_industry": "specific sub-industry e.g. craft beverage distribution, specialty chemical wholesale, commercial HVAC contractor, agricultural equipment dealer"
 }}"""

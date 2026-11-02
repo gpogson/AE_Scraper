@@ -4,7 +4,7 @@ import os
 
 import requests
 
-from config import TAM_US_STATES, TAM_CA_PROVINCES
+from config import ROUTE_INDUSTRY_VERTICALS, TAM_US_STATES, TAM_CA_PROVINCES
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,7 @@ def _extract_with_gpt(company_name: str, snippet: str) -> dict | None:
 
 _ROUTE_THRESHOLD = 7   # erp_likelihood must be >= this to route
 _MAX_EMPLOYEES   = 150
-_MAX_REVENUE_M   = 80.0
+_MAX_REVENUE_M   = 50.0
 
 
 def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
@@ -185,17 +185,18 @@ def _firmographics_score(enrichment: dict) -> tuple[float, str | None]:
       $1M–$15M  → 5.0
       $15M–$30M → 4.0
       $30M–$50M → 3.0
-      $50M–$80M → 2.0
+      >$50M est → 2.0  (unconfirmed revenue is never excluded)
       <$1M      → 2.5
       unknown   → 3.5
-      >$80M     → EXCLUDED
+      >$50M     → EXCLUDED (confirmed figures only)
     """
     emp = enrichment.get("employee_count_est")
     rev = enrichment.get("revenue_millions_est")
+    rev_confirmed = not str(enrichment.get("estimated_revenue") or "est.").strip().lower().startswith("est")
 
     if emp is not None and emp > _MAX_EMPLOYEES:
         return 0.0, f"employee count too high (~{emp})"
-    if rev is not None and rev > _MAX_REVENUE_M:
+    if rev is not None and rev > _MAX_REVENUE_M and rev_confirmed:
         return 0.0, f"revenue too high (~${rev:.0f}M)"
 
     if emp is None:
@@ -290,14 +291,20 @@ def enrich_company(company_name: str, article_content: str = "") -> dict | None:
     return result
 
 
+def is_target_vertical(classification: dict) -> bool:
+    vertical = (classification.get("industry_vertical") or "").strip().lower()
+    return vertical in ROUTE_INDUSTRY_VERTICALS
+
+
 def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     """
     Merge enrichment into classification, run dual-score routing decision.
 
     Routing requires ALL of:
+      - industry_vertical is in ROUTE_INDUSTRY_VERTICALS
       - in_tam_geography is True
       - at least one ERP signal
-      - not hard-excluded (employees <= 150 AND revenue <= $80M)
+      - not hard-excluded (employees <= 150 AND confirmed revenue <= $50M)
       - average of article_score + firmographics_score >= 7.3
     """
     updated = classification.copy()
@@ -347,8 +354,12 @@ def apply_enrichment(classification: dict, enrichment: dict) -> dict:
     geo_ok  = updated.get("in_tam_geography")
     signals = updated.get("erp_signals") or []
 
+    if not is_target_vertical(classification):
+        updated["exclusion_reason"] = f"industry not targeted ({classification.get('industry_vertical')})"
+
     updated["should_route"] = bool(
-        geo_ok is True
+        is_target_vertical(classification)
+        and geo_ok is True
         and len(signals) > 0
         and erp_likelihood >= _ROUTE_THRESHOLD
         and firmographics_score >= 5.0

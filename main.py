@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from classifier import classify_article
 from config import POLL_INTERVAL_MINUTES
 from db import finish_run, init_db, is_seen, mark_seen, record_article_event, start_run
-from enricher import apply_enrichment, enrich_company
+from enricher import apply_enrichment, enrich_company, is_target_vertical
 from notifier import send_discord_notification
 from scraper import fetch_new_articles
 
@@ -66,8 +66,12 @@ def run_pipeline(dry_run: bool = False):
         classified_count += 1
         company_name = result.get("company_name")
 
-        # Only enrich strong signals (7+) to conserve Serper credits
+        # Only enrich strong signals (7+) from target verticals to conserve Serper credits
         needs_enrichment = (result.get("erp_likelihood") or 0) >= 7
+
+        if needs_enrichment and not is_target_vertical(result):
+            result["exclusion_reason"] = f"industry not targeted ({result.get('industry_vertical')})"
+            needs_enrichment = False
 
         if needs_enrichment and company_name:
             logger.info(f"Enriching: {company_name}")

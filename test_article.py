@@ -90,6 +90,7 @@ def main():
     print(f"Signals:        {result.get('erp_signals')}")
     print(f"ERP Likelihood: {likelihood}/10")
     print(f"Reasoning:      {result.get('likelihood_reasoning')}")
+    print(f"Vertical:       {result.get('industry_vertical')}")
     print(f"Sub-industry:   {result.get('sub_industry')}")
 
     if likelihood >= 6:
