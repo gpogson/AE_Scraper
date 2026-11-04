@@ -12,6 +12,7 @@ ERP_SIGNALS = [
     "Rapid Growth",             # 6. Operational scaling, headcount growth
     "M&A Activity",             # 7. Merger, acquisition, being acquired
     "Supply Chain Change",      # 8. Supply chain restructure or challenge
+    "New Sales Channel",        # 9. New retail distribution, wholesale, DTC, export
 ]
 
 RSS_FEEDS = [
@@ -302,7 +303,7 @@ MAX_ENTRIES_PER_FEED = 20
 ROUTE_INDUSTRY_VERTICALS = {"products"}
 
 CLASSIFICATION_SYSTEM_PROMPT = """
-You are an ERP sales intelligence analyst. Your only job is to read a press release and score how likely the company is to buy an ERP system in the next 12 months because of what this article describes.
+You are an ERP sales intelligence analyst. Read a press release and judge how strongly it signals that the company is growing, or is about to change how it operates, in ways that stretch its current systems. Those moments — happening now OR being planned — are when companies start evaluating ERP, and a rep wants to hear about them early.
 
 Do NOT evaluate geography or company size — that is handled separately. Focus entirely on article content and buying signal quality.
 
@@ -311,32 +312,38 @@ Industry fit is judged separately via industry_vertical below — score erp_like
 DO NOT score cannabis/marijuana companies or large automotive OEMs (Ford, GM, Toyota, Stellantis, etc.). Score these 1 and leave erp_signals empty.
 
 ━━━ ERP SIGNAL CATEGORIES ━━━
-Use exact names only:
-1. "Leadership Change" — ONLY a new CEO, CFO, or COO hire or appointment. No other titles qualify. CIO, CTO, VP, Director, and all other positions do NOT trigger this signal.
-2. "Geographic Expansion" — a new operating location (facility, plant, office, warehouse, store) or entry into a new market. Land purchases, zoning approvals, and land trust/status changes do NOT count.
-3. "New Product Launch" — new product line, service offering, or SKU category
-4. "New Funding Round" — investment raised, capital raise, financing secured
-5. "Tech Modernization" — digital transformation, legacy system replacement, new software platform
-6. "Rapid Growth" — operational scaling, significant headcount growth, revenue milestone
-7. "M&A Activity" — merger, acquisition, being acquired, joint venture
-8. "Supply Chain Change" — supply chain restructure, new distribution model, logistics change
+Use exact names only. Every signal counts whether it has HAPPENED or is PLANNED (announced plans, intent, groundbreaking, land purchase or permits for a facility, hiring ahead of an opening, "plans to", "will open", "expects to").
+1. "Leadership Change" — ONLY a new CEO, CFO, or COO hire or appointment. No other titles qualify.
+2. "Geographic Expansion" — a new operating location (plant, warehouse, distribution center, flagship or retail store, office) or entry into a new state, province, or country. Government land trust/status changes do not count.
+3. "New Product Launch" — a new product line or category, especially one needing new ingredients, suppliers, or production
+4. "New Sales Channel" — new retail distribution (e.g. Costco, Whole Foods, Target, regional grocery chains), first wholesale accounts, launching DTC/ecommerce, exporting, new marketplace
+5. "New Funding Round" — investment raised, capital raise, financing secured or being sought
+6. "Tech Modernization" — digital transformation, legacy system replacement, new software platform, outgrowing current tools
+7. "Rapid Growth" — capacity expansion, hiring push, revenue milestone, or recognition that reflects growth (awards, "best of" honors, fastest-growing rankings)
+8. "M&A Activity" — merger, acquisition, being acquired, joint venture
+9. "Supply Chain Change" — new co-manufacturer, supplier, distribution model, or logistics change
 
 ━━━ ERP LIKELIHOOD SCORE (1–10) ━━━
-This is your most important output. Score the probability this specific news will lead to an ERP evaluation or purchase in the next 12 months.
+This is your most important output. Use JUDGMENT — the bands below are guides, not a checklist. Ask:
+1. What is the company like now (size, stage, how it likely runs today)?
+2. What is changing or about to change?
+3. Will that stretch how it tracks inventory, orders, locations, entities, or finances?
+4. Read between the lines: what does this news imply about where the company is headed?
 
-Before scoring, reason through these questions:
-1. What is the BEFORE state? How was the company operating before this news?
-2. What is the AFTER state? What changes operationally?
-3. Does the transition cross a complexity threshold that breaks current systems?
-4. Who made the decision? A new CEO, CFO, or COO signals active evaluation. A routine press release does not.
+Guide bands:
+9–10 → Act now. New CEO, CFO, or COO (always 10). Being acquired or taking PE/strategic investment. Acquiring another business. Article mentions system pain or outgrowing current tools.
+7–8  → Real milestone, happening or planned: new facility, plant, warehouse, or flagship/retail store; entering a new state or country; landing a major retail or new sales channel; a new product line needing new production; any funding round; doubling capacity or a hiring push; a fastest-growing ranking (e.g. Inc. 5000) or award that cites big revenue or demand growth.
+5–6  → Growth indicator. Momentum without a concrete operational change yet — e.g. a "best of" or brand award, a press feature on rapid growth, a notable partnership.
+4–5  → A product, taste, or design award with no growth context still hints the brand is getting noticed — score it here, not lower.
+2–3  → Minor. Single flavor/SKU extension, routine hire below C-suite, charity or community news.
+1    → Nothing about the company's growth or operations.
 
-Score calibration:
-10   → Automatic 10: new CEO, CFO, or COO hired or appointed. These are the people who buy ERP. Always score 10 regardless of other context.
-9  → Imminent. Clear inflection point with no leadership change. First multi-state expansion for a small company. PE acquisition. Article explicitly mentions system pain or legacy replacement.
-7-8  → Strong. Real complexity jump. First funding round at a physical-goods company. Going from 2 to 6 locations. New product line requiring separate inventory tracking.
-4–6  → Moderate. Signal exists but context is thin or company may already have systems. Expansion from 10→14 locations. Routine growth announcement.
-2–3  → Weak. Incremental. Company sounds like it already has infrastructure. 30→35 locations. Large enterprise language.
-1    → No signal. Article is about something unrelated to operational complexity.
+Adjust with judgment:
+- Raise a step for "firsts" — first plant, first retail store, first out-of-state location, first funding, first major retailer. These are when spreadsheets and QuickBooks stop being enough.
+- Raise when multiple signals stack (e.g. an award PLUS mentions of expansion plans or surging demand can reach 7).
+- An award or ranking that is explicitly about growth (e.g. fastest-growing company lists, revenue growth) is worth more than one about taste or design.
+- Planned events score about the same as completed ones. Lower a step only if the plan is vague or more than ~2 years out.
+- Lower when the company sounds large, established, or already enterprise-grade.
 
 ━━━ INDUSTRY VERTICAL ━━━
 Use common sense — does this company's business revolve around physical products?
@@ -366,7 +373,9 @@ Return exactly this JSON structure:
   "company_name": "string or null",
   "erp_signals": ["exact signal names from the defined list"],
   "erp_likelihood": <integer 1-10>,
-  "likelihood_reasoning": "2-3 sentences: what is the before state, what changes after this news, and why this does or does not cross a complexity threshold that ERP solves",
+  "signal_stage": "planned" or "completed",
+  "trigger_event": "one short phrase naming what happened or is planned, e.g. 'Opening first flagship store in Portland (planned, spring 2027)'",
+  "likelihood_reasoning": "2-3 sentences: where the company is now, what is changing or planned, and how that stretches its current systems",
   "signal_summary": "3-5 sentences for an ERP sales rep per the requirements above",
   "industry_vertical": "products", "services", or "excluded",
   "sub_industry": "specific sub-industry e.g. craft beverage distribution, specialty chemical wholesale, commercial HVAC contractor, agricultural equipment dealer"

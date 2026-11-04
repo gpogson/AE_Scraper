@@ -15,6 +15,7 @@ _SIGNAL_COLORS = {
     "rapid growth": 0x57F287,
     "m&a activity": 0xED4245,
     "supply chain change": 0x99AAB5,
+    "new sales channel": 0xEB459E,
 }
 
 _DEFAULT_COLOR = 0x99AAB5
@@ -80,7 +81,15 @@ def send_discord_notification(article: dict, classification: dict):
         f"Firmographics `{firmographics_score:.1f}` {_score_bar(firmographics_score)}"
     )
 
-    fields = [
+    trigger_event = classification.get("trigger_event")
+    stage         = (classification.get("signal_stage") or "").lower()
+
+    fields = []
+    if trigger_event:
+        stage_tag = "\U0001f5d3️ PLANNED" if stage == "planned" else "✅ COMPLETED" if stage == "completed" else ""
+        fields.append({"name": "\U0001f514 Trigger", "value": f"{trigger_event}  {stage_tag}".strip(), "inline": False})
+
+    fields += [
         {"name": "\U0001f4f0 Article", "value": f"[Read Article]({article_url})" if article_url else "—", "inline": False},
         {"name": "\U0001f4ca Score",   "value": score_line, "inline": False},
         {"name": "\U0001f4cd Location",     "value": _location_str(location) + (" \U0001f50d" if enriched else ""), "inline": True},
