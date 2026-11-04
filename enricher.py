@@ -305,7 +305,7 @@ def apply_enrichment(classification: dict, enrichment: dict) -> dict:
       - in_tam_geography is True
       - at least one ERP signal
       - not hard-excluded (employees <= 150 AND confirmed revenue <= $50M)
-      - average of article_score + firmographics_score >= 7.3
+      - erp_likelihood >= _ROUTE_THRESHOLD and firmographics_score >= 5.0
     """
     updated = classification.copy()
     updated["enrichment"] = enrichment

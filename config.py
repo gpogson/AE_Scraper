@@ -306,14 +306,14 @@ You are an ERP sales intelligence analyst. Your only job is to read a press rele
 
 Do NOT evaluate geography or company size — that is handled separately. Focus entirely on article content and buying signal quality.
 
-Every company is a potential ERP buyer regardless of industry. A SaaS company, law firm, or marketing agency can need ERP just as much as a manufacturer.
+Industry fit is judged separately via industry_vertical below — score erp_likelihood purely on what the article describes.
 
 DO NOT score cannabis/marijuana companies or large automotive OEMs (Ford, GM, Toyota, Stellantis, etc.). Score these 1 and leave erp_signals empty.
 
 ━━━ ERP SIGNAL CATEGORIES ━━━
 Use exact names only:
 1. "Leadership Change" — ONLY a new CEO, CFO, or COO hire or appointment. No other titles qualify. CIO, CTO, VP, Director, and all other positions do NOT trigger this signal.
-2. "Geographic Expansion" — new location, facility, office, warehouse, or market entry
+2. "Geographic Expansion" — a new operating location (facility, plant, office, warehouse, store) or entry into a new market. Land purchases, zoning approvals, and land trust/status changes do NOT count.
 3. "New Product Launch" — new product line, service offering, or SKU category
 4. "New Funding Round" — investment raised, capital raise, financing secured
 5. "Tech Modernization" — digital transformation, legacy system replacement, new software platform
@@ -328,7 +328,7 @@ Before scoring, reason through these questions:
 1. What is the BEFORE state? How was the company operating before this news?
 2. What is the AFTER state? What changes operationally?
 3. Does the transition cross a complexity threshold that breaks current systems?
-4. Who made the decision? A new CIO signals active evaluation. A routine press release does not.
+4. Who made the decision? A new CEO, CFO, or COO signals active evaluation. A routine press release does not.
 
 Score calibration:
 10   → Automatic 10: new CEO, CFO, or COO hired or appointed. These are the people who buy ERP. Always score 10 regardless of other context.
@@ -343,6 +343,7 @@ Use common sense — does this company's business revolve around physical produc
 - "products" — it makes, grows, distributes, or sells physical goods (manufacturers, food & beverage producers, farms, wholesale distributors, consumer brands, retailers, commercial printers).
 - "services" — it mainly sells services, software, or expertise (SaaS, consulting, agencies, staffing/recruiting, financial, legal, healthcare providers, contractors, logistics). Also "services": real estate companies, REITs, landlords, investment/holding companies, and mineral or energy royalty owners — owning assets is not making products.
 Vehicle dealers (auto, boat, RV, motorcycle, ATV) count as "services".
+- "excluded" — never a prospect: governments of any kind (tribal governments/nations, cities, counties, states, agencies), schools and universities, nonprofits and associations, and mining companies (mineral exploration, mining, quarrying — including gold/silver/lithium/copper explorers).
 Judge by what the company IS, not by what the article mentions. If it does both, choose what drives most of its revenue.
 
 ━━━ SIGNAL SUMMARY ━━━
@@ -367,6 +368,6 @@ Return exactly this JSON structure:
   "erp_likelihood": <integer 1-10>,
   "likelihood_reasoning": "2-3 sentences: what is the before state, what changes after this news, and why this does or does not cross a complexity threshold that ERP solves",
   "signal_summary": "3-5 sentences for an ERP sales rep per the requirements above",
-  "industry_vertical": "products" or "services",
+  "industry_vertical": "products", "services", or "excluded",
   "sub_industry": "specific sub-industry e.g. craft beverage distribution, specialty chemical wholesale, commercial HVAC contractor, agricultural equipment dealer"
 }}"""
